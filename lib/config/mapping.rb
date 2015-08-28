@@ -1,7 +1,11 @@
-# collection :users do
-#   entity     User
-#   repository UserRepository
-#
-#   attribute :id,   Integer
-#   attribute :name, String
-# end
+collection :subscriptions do
+  entity Subscription
+  repository SubscriptionRepository
+
+  attribute :id, Integer
+  attribute :email,        String
+  attribute :first_name,   String
+  attribute :last_name,    String
+  attribute :created_at,   DateTime
+  attribute :confirmed_at, DateTime
+end

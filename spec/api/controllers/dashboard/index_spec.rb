@@ -1,7 +1,6 @@
-require 'spec_helper'
 require_relative '../../../../apps/api/controllers/dashboard/index'
 
-describe Api::Controllers::Dashboard::Index do
+RSpec.describe Api::Controllers::Dashboard::Index do
   let(:action) { Api::Controllers::Dashboard::Index.new }
   let(:params) { Hash[] }
 

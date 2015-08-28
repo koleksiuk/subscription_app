@@ -53,6 +53,8 @@ GEM
     pry-nav (0.2.4)
       pry (>= 0.9.10, < 0.11.0)
     rack (1.6.4)
+    rack-parser (0.6.1)
+      rack
     rack-test (0.6.3)
       rack (>= 1.0)
     rake (10.4.2)
@@ -91,5 +93,6 @@ DEPENDENCIES
   pg
   pry
   pry-nav
+  rack-parser
   rake
   rspec

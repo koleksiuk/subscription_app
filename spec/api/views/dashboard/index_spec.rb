@@ -1,7 +1,6 @@
-require 'spec_helper'
 require_relative '../../../../apps/api/views/dashboard/index'
 
-describe Api::Views::Dashboard::Index do
+RSpec.describe Api::Views::Dashboard::Index do
   let(:view)      { Api::Views::Dashboard::Index.new(nil, {}) }
   let(:rendered)  { view.render }
 

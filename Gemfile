@@ -3,6 +3,8 @@ source 'https://rubygems.org'
 gem 'bundler'
 gem 'rake'
 
+gem 'rack-parser'
+
 gem 'lotusrb',       '0.4.1'
 gem 'lotus-model',   '~> 0.4'
 
