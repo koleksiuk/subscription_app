@@ -1,0 +1,22 @@
+{
+  "name": "ph_chat",
+  "version": "0.1.0",
+  "authors": [
+    "Konrad Oleksiuk <konrad@up-next.com>"
+  ],
+  "license": "MIT",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "reflux": "~0.2.12",
+    "react": "~0.13.3",
+    "bootstrap": "~3.3.5",
+    "bootstrap-css": "~3.3.4",
+    "classnames": "~2.1.3"
+  }
+}
