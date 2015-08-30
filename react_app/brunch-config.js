@@ -25,7 +25,7 @@ exports.config = {
     watched: ["static"],
 
     // Where to compile files to
-    public: "priv/static"
+    public: "../apps/web/public"
   },
 
   // Configure your plugins
@@ -38,7 +38,8 @@ exports.config = {
 
   modules: {
     autoRequire: {
-      'js/app.js': ['static/js/app']
+      'js/app.js': ['static/js/app'],
+      'css/app.css': ['statis/css/app']
     }
   },
 

@@ -1,6 +1,5 @@
-import MyDiv from "./MyDiv"
+import SignupForm from "./SignupForm"
 
 React.render(
-  <MyDiv />,
-  document.getElementById("mydiv")
-);
+  <SignupForm />, $('#signup-form')[0]
+)
