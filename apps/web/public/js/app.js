@@ -33243,7 +33243,310 @@ var ExecutionEnvironment = {
 
 module.exports = ExecutionEnvironment;
 
-},{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPluginUtils.js":[function(require,module,exports){
+},{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactComponent.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactComponent
+ */
+
+'use strict';
+
+var ReactUpdateQueue = require("./ReactUpdateQueue");
+
+var invariant = require("./invariant");
+var warning = require("./warning");
+
+/**
+ * Base class helpers for the updating state of a component.
+ */
+function ReactComponent(props, context) {
+  this.props = props;
+  this.context = context;
+}
+
+/**
+ * Sets a subset of the state. Always use this to mutate
+ * state. You should treat `this.state` as immutable.
+ *
+ * There is no guarantee that `this.state` will be immediately updated, so
+ * accessing `this.state` after calling this method may return the old value.
+ *
+ * There is no guarantee that calls to `setState` will run synchronously,
+ * as they may eventually be batched together.  You can provide an optional
+ * callback that will be executed when the call to setState is actually
+ * completed.
+ *
+ * When a function is provided to setState, it will be called at some point in
+ * the future (not synchronously). It will be called with the up to date
+ * component arguments (state, props, context). These values can be different
+ * from this.* because your function may be called after receiveProps but before
+ * shouldComponentUpdate, and this new state, props, and context will not yet be
+ * assigned to this.
+ *
+ * @param {object|function} partialState Next partial state or function to
+ *        produce next partial state to be merged with current state.
+ * @param {?function} callback Called after state is updated.
+ * @final
+ * @protected
+ */
+ReactComponent.prototype.setState = function(partialState, callback) {
+  ("production" !== process.env.NODE_ENV ? invariant(
+    typeof partialState === 'object' ||
+    typeof partialState === 'function' ||
+    partialState == null,
+    'setState(...): takes an object of state variables to update or a ' +
+    'function which returns an object of state variables.'
+  ) : invariant(typeof partialState === 'object' ||
+  typeof partialState === 'function' ||
+  partialState == null));
+  if ("production" !== process.env.NODE_ENV) {
+    ("production" !== process.env.NODE_ENV ? warning(
+      partialState != null,
+      'setState(...): You passed an undefined or null state object; ' +
+      'instead, use forceUpdate().'
+    ) : null);
+  }
+  ReactUpdateQueue.enqueueSetState(this, partialState);
+  if (callback) {
+    ReactUpdateQueue.enqueueCallback(this, callback);
+  }
+};
+
+/**
+ * Forces an update. This should only be invoked when it is known with
+ * certainty that we are **not** in a DOM transaction.
+ *
+ * You may want to call this when you know that some deeper aspect of the
+ * component's state has changed but `setState` was not called.
+ *
+ * This will not invoke `shouldComponentUpdate`, but it will invoke
+ * `componentWillUpdate` and `componentDidUpdate`.
+ *
+ * @param {?function} callback Called after update is complete.
+ * @final
+ * @protected
+ */
+ReactComponent.prototype.forceUpdate = function(callback) {
+  ReactUpdateQueue.enqueueForceUpdate(this);
+  if (callback) {
+    ReactUpdateQueue.enqueueCallback(this, callback);
+  }
+};
+
+/**
+ * Deprecated APIs. These APIs used to exist on classic React classes but since
+ * we would like to deprecate them, we're not going to move them over to this
+ * modern base class. Instead, we define a getter that warns if it's accessed.
+ */
+if ("production" !== process.env.NODE_ENV) {
+  var deprecatedAPIs = {
+    getDOMNode: [
+      'getDOMNode',
+      'Use React.findDOMNode(component) instead.'
+    ],
+    isMounted: [
+      'isMounted',
+      'Instead, make sure to clean up subscriptions and pending requests in ' +
+      'componentWillUnmount to prevent memory leaks.'
+    ],
+    replaceProps: [
+      'replaceProps',
+      'Instead, call React.render again at the top level.'
+    ],
+    replaceState: [
+      'replaceState',
+      'Refactor your code to use setState instead (see ' +
+      'https://github.com/facebook/react/issues/3236).'
+    ],
+    setProps: [
+      'setProps',
+      'Instead, call React.render again at the top level.'
+    ]
+  };
+  var defineDeprecationWarning = function(methodName, info) {
+    try {
+      Object.defineProperty(ReactComponent.prototype, methodName, {
+        get: function() {
+          ("production" !== process.env.NODE_ENV ? warning(
+            false,
+            '%s(...) is deprecated in plain JavaScript React classes. %s',
+            info[0],
+            info[1]
+          ) : null);
+          return undefined;
+        }
+      });
+    } catch (x) {
+      // IE will fail on defineProperty (es5-shim/sham too)
+    }
+  };
+  for (var fnName in deprecatedAPIs) {
+    if (deprecatedAPIs.hasOwnProperty(fnName)) {
+      defineDeprecationWarning(fnName, deprecatedAPIs[fnName]);
+    }
+  }
+}
+
+module.exports = ReactComponent;
+
+},{ "./ReactUpdateQueue":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdateQueue.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactChildren.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactChildren
+ */
+
+'use strict';
+
+var PooledClass = require("./PooledClass");
+var ReactFragment = require("./ReactFragment");
+
+var traverseAllChildren = require("./traverseAllChildren");
+var warning = require("./warning");
+
+var twoArgumentPooler = PooledClass.twoArgumentPooler;
+var threeArgumentPooler = PooledClass.threeArgumentPooler;
+
+/**
+ * PooledClass representing the bookkeeping associated with performing a child
+ * traversal. Allows avoiding binding callbacks.
+ *
+ * @constructor ForEachBookKeeping
+ * @param {!function} forEachFunction Function to perform traversal with.
+ * @param {?*} forEachContext Context to perform context with.
+ */
+function ForEachBookKeeping(forEachFunction, forEachContext) {
+  this.forEachFunction = forEachFunction;
+  this.forEachContext = forEachContext;
+}
+PooledClass.addPoolingTo(ForEachBookKeeping, twoArgumentPooler);
+
+function forEachSingleChild(traverseContext, child, name, i) {
+  var forEachBookKeeping = traverseContext;
+  forEachBookKeeping.forEachFunction.call(
+    forEachBookKeeping.forEachContext, child, i);
+}
+
+/**
+ * Iterates through children that are typically specified as `props.children`.
+ *
+ * The provided forEachFunc(child, index) will be called for each
+ * leaf child.
+ *
+ * @param {?*} children Children tree container.
+ * @param {function(*, int)} forEachFunc.
+ * @param {*} forEachContext Context for forEachContext.
+ */
+function forEachChildren(children, forEachFunc, forEachContext) {
+  if (children == null) {
+    return children;
+  }
+
+  var traverseContext =
+    ForEachBookKeeping.getPooled(forEachFunc, forEachContext);
+  traverseAllChildren(children, forEachSingleChild, traverseContext);
+  ForEachBookKeeping.release(traverseContext);
+}
+
+/**
+ * PooledClass representing the bookkeeping associated with performing a child
+ * mapping. Allows avoiding binding callbacks.
+ *
+ * @constructor MapBookKeeping
+ * @param {!*} mapResult Object containing the ordered map of results.
+ * @param {!function} mapFunction Function to perform mapping with.
+ * @param {?*} mapContext Context to perform mapping with.
+ */
+function MapBookKeeping(mapResult, mapFunction, mapContext) {
+  this.mapResult = mapResult;
+  this.mapFunction = mapFunction;
+  this.mapContext = mapContext;
+}
+PooledClass.addPoolingTo(MapBookKeeping, threeArgumentPooler);
+
+function mapSingleChildIntoContext(traverseContext, child, name, i) {
+  var mapBookKeeping = traverseContext;
+  var mapResult = mapBookKeeping.mapResult;
+
+  var keyUnique = !mapResult.hasOwnProperty(name);
+  if ("production" !== process.env.NODE_ENV) {
+    ("production" !== process.env.NODE_ENV ? warning(
+      keyUnique,
+      'ReactChildren.map(...): Encountered two children with the same key, ' +
+      '`%s`. Child keys must be unique; when two children share a key, only ' +
+      'the first child will be used.',
+      name
+    ) : null);
+  }
+
+  if (keyUnique) {
+    var mappedChild =
+      mapBookKeeping.mapFunction.call(mapBookKeeping.mapContext, child, i);
+    mapResult[name] = mappedChild;
+  }
+}
+
+/**
+ * Maps children that are typically specified as `props.children`.
+ *
+ * The provided mapFunction(child, key, index) will be called for each
+ * leaf child.
+ *
+ * TODO: This may likely break any calls to `ReactChildren.map` that were
+ * previously relying on the fact that we guarded against null children.
+ *
+ * @param {?*} children Children tree container.
+ * @param {function(*, int)} mapFunction.
+ * @param {*} mapContext Context for mapFunction.
+ * @return {object} Object containing the ordered map of results.
+ */
+function mapChildren(children, func, context) {
+  if (children == null) {
+    return children;
+  }
+
+  var mapResult = {};
+  var traverseContext = MapBookKeeping.getPooled(mapResult, func, context);
+  traverseAllChildren(children, mapSingleChildIntoContext, traverseContext);
+  MapBookKeeping.release(traverseContext);
+  return ReactFragment.create(mapResult);
+}
+
+function forEachSingleChildDummy(traverseContext, child, name, i) {
+  return null;
+}
+
+/**
+ * Count the number of children that are typically specified as
+ * `props.children`.
+ *
+ * @param {?*} children Children tree container.
+ * @return {number} The number of children.
+ */
+function countChildren(children, context) {
+  return traverseAllChildren(children, forEachSingleChildDummy, null);
+}
+
+var ReactChildren = {
+  forEach: forEachChildren,
+  map: mapChildren,
+  count: countChildren
+};
+
+module.exports = ReactChildren;
+
+},{ "./PooledClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/PooledClass.js","./ReactFragment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactFragment.js","./traverseAllChildren":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/traverseAllChildren.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPluginUtils.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -33462,310 +33765,7 @@ var EventPluginUtils = {
 
 module.exports = EventPluginUtils;
 
-},{ "./EventConstants":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventConstants.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactChildren.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule ReactChildren
- */
-
-'use strict';
-
-var PooledClass = require("./PooledClass");
-var ReactFragment = require("./ReactFragment");
-
-var traverseAllChildren = require("./traverseAllChildren");
-var warning = require("./warning");
-
-var twoArgumentPooler = PooledClass.twoArgumentPooler;
-var threeArgumentPooler = PooledClass.threeArgumentPooler;
-
-/**
- * PooledClass representing the bookkeeping associated with performing a child
- * traversal. Allows avoiding binding callbacks.
- *
- * @constructor ForEachBookKeeping
- * @param {!function} forEachFunction Function to perform traversal with.
- * @param {?*} forEachContext Context to perform context with.
- */
-function ForEachBookKeeping(forEachFunction, forEachContext) {
-  this.forEachFunction = forEachFunction;
-  this.forEachContext = forEachContext;
-}
-PooledClass.addPoolingTo(ForEachBookKeeping, twoArgumentPooler);
-
-function forEachSingleChild(traverseContext, child, name, i) {
-  var forEachBookKeeping = traverseContext;
-  forEachBookKeeping.forEachFunction.call(
-    forEachBookKeeping.forEachContext, child, i);
-}
-
-/**
- * Iterates through children that are typically specified as `props.children`.
- *
- * The provided forEachFunc(child, index) will be called for each
- * leaf child.
- *
- * @param {?*} children Children tree container.
- * @param {function(*, int)} forEachFunc.
- * @param {*} forEachContext Context for forEachContext.
- */
-function forEachChildren(children, forEachFunc, forEachContext) {
-  if (children == null) {
-    return children;
-  }
-
-  var traverseContext =
-    ForEachBookKeeping.getPooled(forEachFunc, forEachContext);
-  traverseAllChildren(children, forEachSingleChild, traverseContext);
-  ForEachBookKeeping.release(traverseContext);
-}
-
-/**
- * PooledClass representing the bookkeeping associated with performing a child
- * mapping. Allows avoiding binding callbacks.
- *
- * @constructor MapBookKeeping
- * @param {!*} mapResult Object containing the ordered map of results.
- * @param {!function} mapFunction Function to perform mapping with.
- * @param {?*} mapContext Context to perform mapping with.
- */
-function MapBookKeeping(mapResult, mapFunction, mapContext) {
-  this.mapResult = mapResult;
-  this.mapFunction = mapFunction;
-  this.mapContext = mapContext;
-}
-PooledClass.addPoolingTo(MapBookKeeping, threeArgumentPooler);
-
-function mapSingleChildIntoContext(traverseContext, child, name, i) {
-  var mapBookKeeping = traverseContext;
-  var mapResult = mapBookKeeping.mapResult;
-
-  var keyUnique = !mapResult.hasOwnProperty(name);
-  if ("production" !== process.env.NODE_ENV) {
-    ("production" !== process.env.NODE_ENV ? warning(
-      keyUnique,
-      'ReactChildren.map(...): Encountered two children with the same key, ' +
-      '`%s`. Child keys must be unique; when two children share a key, only ' +
-      'the first child will be used.',
-      name
-    ) : null);
-  }
-
-  if (keyUnique) {
-    var mappedChild =
-      mapBookKeeping.mapFunction.call(mapBookKeeping.mapContext, child, i);
-    mapResult[name] = mappedChild;
-  }
-}
-
-/**
- * Maps children that are typically specified as `props.children`.
- *
- * The provided mapFunction(child, key, index) will be called for each
- * leaf child.
- *
- * TODO: This may likely break any calls to `ReactChildren.map` that were
- * previously relying on the fact that we guarded against null children.
- *
- * @param {?*} children Children tree container.
- * @param {function(*, int)} mapFunction.
- * @param {*} mapContext Context for mapFunction.
- * @return {object} Object containing the ordered map of results.
- */
-function mapChildren(children, func, context) {
-  if (children == null) {
-    return children;
-  }
-
-  var mapResult = {};
-  var traverseContext = MapBookKeeping.getPooled(mapResult, func, context);
-  traverseAllChildren(children, mapSingleChildIntoContext, traverseContext);
-  MapBookKeeping.release(traverseContext);
-  return ReactFragment.create(mapResult);
-}
-
-function forEachSingleChildDummy(traverseContext, child, name, i) {
-  return null;
-}
-
-/**
- * Count the number of children that are typically specified as
- * `props.children`.
- *
- * @param {?*} children Children tree container.
- * @return {number} The number of children.
- */
-function countChildren(children, context) {
-  return traverseAllChildren(children, forEachSingleChildDummy, null);
-}
-
-var ReactChildren = {
-  forEach: forEachChildren,
-  map: mapChildren,
-  count: countChildren
-};
-
-module.exports = ReactChildren;
-
-},{ "./PooledClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/PooledClass.js","./ReactFragment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactFragment.js","./traverseAllChildren":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/traverseAllChildren.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactComponent.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule ReactComponent
- */
-
-'use strict';
-
-var ReactUpdateQueue = require("./ReactUpdateQueue");
-
-var invariant = require("./invariant");
-var warning = require("./warning");
-
-/**
- * Base class helpers for the updating state of a component.
- */
-function ReactComponent(props, context) {
-  this.props = props;
-  this.context = context;
-}
-
-/**
- * Sets a subset of the state. Always use this to mutate
- * state. You should treat `this.state` as immutable.
- *
- * There is no guarantee that `this.state` will be immediately updated, so
- * accessing `this.state` after calling this method may return the old value.
- *
- * There is no guarantee that calls to `setState` will run synchronously,
- * as they may eventually be batched together.  You can provide an optional
- * callback that will be executed when the call to setState is actually
- * completed.
- *
- * When a function is provided to setState, it will be called at some point in
- * the future (not synchronously). It will be called with the up to date
- * component arguments (state, props, context). These values can be different
- * from this.* because your function may be called after receiveProps but before
- * shouldComponentUpdate, and this new state, props, and context will not yet be
- * assigned to this.
- *
- * @param {object|function} partialState Next partial state or function to
- *        produce next partial state to be merged with current state.
- * @param {?function} callback Called after state is updated.
- * @final
- * @protected
- */
-ReactComponent.prototype.setState = function(partialState, callback) {
-  ("production" !== process.env.NODE_ENV ? invariant(
-    typeof partialState === 'object' ||
-    typeof partialState === 'function' ||
-    partialState == null,
-    'setState(...): takes an object of state variables to update or a ' +
-    'function which returns an object of state variables.'
-  ) : invariant(typeof partialState === 'object' ||
-  typeof partialState === 'function' ||
-  partialState == null));
-  if ("production" !== process.env.NODE_ENV) {
-    ("production" !== process.env.NODE_ENV ? warning(
-      partialState != null,
-      'setState(...): You passed an undefined or null state object; ' +
-      'instead, use forceUpdate().'
-    ) : null);
-  }
-  ReactUpdateQueue.enqueueSetState(this, partialState);
-  if (callback) {
-    ReactUpdateQueue.enqueueCallback(this, callback);
-  }
-};
-
-/**
- * Forces an update. This should only be invoked when it is known with
- * certainty that we are **not** in a DOM transaction.
- *
- * You may want to call this when you know that some deeper aspect of the
- * component's state has changed but `setState` was not called.
- *
- * This will not invoke `shouldComponentUpdate`, but it will invoke
- * `componentWillUpdate` and `componentDidUpdate`.
- *
- * @param {?function} callback Called after update is complete.
- * @final
- * @protected
- */
-ReactComponent.prototype.forceUpdate = function(callback) {
-  ReactUpdateQueue.enqueueForceUpdate(this);
-  if (callback) {
-    ReactUpdateQueue.enqueueCallback(this, callback);
-  }
-};
-
-/**
- * Deprecated APIs. These APIs used to exist on classic React classes but since
- * we would like to deprecate them, we're not going to move them over to this
- * modern base class. Instead, we define a getter that warns if it's accessed.
- */
-if ("production" !== process.env.NODE_ENV) {
-  var deprecatedAPIs = {
-    getDOMNode: [
-      'getDOMNode',
-      'Use React.findDOMNode(component) instead.'
-    ],
-    isMounted: [
-      'isMounted',
-      'Instead, make sure to clean up subscriptions and pending requests in ' +
-      'componentWillUnmount to prevent memory leaks.'
-    ],
-    replaceProps: [
-      'replaceProps',
-      'Instead, call React.render again at the top level.'
-    ],
-    replaceState: [
-      'replaceState',
-      'Refactor your code to use setState instead (see ' +
-      'https://github.com/facebook/react/issues/3236).'
-    ],
-    setProps: [
-      'setProps',
-      'Instead, call React.render again at the top level.'
-    ]
-  };
-  var defineDeprecationWarning = function(methodName, info) {
-    try {
-      Object.defineProperty(ReactComponent.prototype, methodName, {
-        get: function() {
-          ("production" !== process.env.NODE_ENV ? warning(
-            false,
-            '%s(...) is deprecated in plain JavaScript React classes. %s',
-            info[0],
-            info[1]
-          ) : null);
-          return undefined;
-        }
-      });
-    } catch (x) {
-      // IE will fail on defineProperty (es5-shim/sham too)
-    }
-  };
-  for (var fnName in deprecatedAPIs) {
-    if (deprecatedAPIs.hasOwnProperty(fnName)) {
-      defineDeprecationWarning(fnName, deprecatedAPIs[fnName]);
-    }
-  }
-}
-
-module.exports = ReactComponent;
-
-},{ "./ReactUpdateQueue":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdateQueue.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactClass.js":[function(require,module,exports){
+},{ "./EventConstants":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventConstants.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactClass.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -34709,470 +34709,7 @@ var ReactClass = {
 
 module.exports = ReactClass;
 
-},{ "./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./ReactComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactComponent.js","./ReactCurrentOwner":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactCurrentOwner.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactErrorUtils":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactErrorUtils.js","./ReactInstanceMap":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInstanceMap.js","./ReactLifeCycle":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactLifeCycle.js","./ReactPropTypeLocationNames":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPropTypeLocationNames.js","./ReactPropTypeLocations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPropTypeLocations.js","./ReactUpdateQueue":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdateQueue.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./keyMirror":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/keyMirror.js","./keyOf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/keyOf.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElementValidator.js":[function(require,module,exports){
-/**
- * Copyright 2014-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule ReactElementValidator
- */
-
-/**
- * ReactElementValidator provides a wrapper around a element factory
- * which validates the props passed to the element. This is intended to be
- * used only in DEV and could be replaced by a static type checker for languages
- * that support it.
- */
-
-'use strict';
-
-var ReactElement = require("./ReactElement");
-var ReactFragment = require("./ReactFragment");
-var ReactPropTypeLocations = require("./ReactPropTypeLocations");
-var ReactPropTypeLocationNames = require("./ReactPropTypeLocationNames");
-var ReactCurrentOwner = require("./ReactCurrentOwner");
-var ReactNativeComponent = require("./ReactNativeComponent");
-
-var getIteratorFn = require("./getIteratorFn");
-var invariant = require("./invariant");
-var warning = require("./warning");
-
-function getDeclarationErrorAddendum() {
-  if (ReactCurrentOwner.current) {
-    var name = ReactCurrentOwner.current.getName();
-    if (name) {
-      return ' Check the render method of `' + name + '`.';
-    }
-  }
-  return '';
-}
-
-/**
- * Warn if there's no key explicitly set on dynamic arrays of children or
- * object keys are not valid. This allows us to keep track of children between
- * updates.
- */
-var ownerHasKeyUseWarning = {};
-
-var loggedTypeFailures = {};
-
-var NUMERIC_PROPERTY_REGEX = /^\d+$/;
-
-/**
- * Gets the instance's name for use in warnings.
- *
- * @internal
- * @return {?string} Display name or undefined
- */
-function getName(instance) {
-  var publicInstance = instance && instance.getPublicInstance();
-  if (!publicInstance) {
-    return undefined;
-  }
-  var constructor = publicInstance.constructor;
-  if (!constructor) {
-    return undefined;
-  }
-  return constructor.displayName || constructor.name || undefined;
-}
-
-/**
- * Gets the current owner's displayName for use in warnings.
- *
- * @internal
- * @return {?string} Display name or undefined
- */
-function getCurrentOwnerDisplayName() {
-  var current = ReactCurrentOwner.current;
-  return (
-    current && getName(current) || undefined
-  );
-}
-
-/**
- * Warn if the element doesn't have an explicit key assigned to it.
- * This element is in an array. The array could grow and shrink or be
- * reordered. All children that haven't already been validated are required to
- * have a "key" property assigned to it.
- *
- * @internal
- * @param {ReactElement} element Element that requires a key.
- * @param {*} parentType element's parent's type.
- */
-function validateExplicitKey(element, parentType) {
-  if (element._store.validated || element.key != null) {
-    return;
-  }
-  element._store.validated = true;
-
-  warnAndMonitorForKeyUse(
-    'Each child in an array or iterator should have a unique "key" prop.',
-    element,
-    parentType
-  );
-}
-
-/**
- * Warn if the key is being defined as an object property but has an incorrect
- * value.
- *
- * @internal
- * @param {string} name Property name of the key.
- * @param {ReactElement} element Component that requires a key.
- * @param {*} parentType element's parent's type.
- */
-function validatePropertyKey(name, element, parentType) {
-  if (!NUMERIC_PROPERTY_REGEX.test(name)) {
-    return;
-  }
-  warnAndMonitorForKeyUse(
-    'Child objects should have non-numeric keys so ordering is preserved.',
-    element,
-    parentType
-  );
-}
-
-/**
- * Shared warning and monitoring code for the key warnings.
- *
- * @internal
- * @param {string} message The base warning that gets output.
- * @param {ReactElement} element Component that requires a key.
- * @param {*} parentType element's parent's type.
- */
-function warnAndMonitorForKeyUse(message, element, parentType) {
-  var ownerName = getCurrentOwnerDisplayName();
-  var parentName = typeof parentType === 'string' ?
-    parentType : parentType.displayName || parentType.name;
-
-  var useName = ownerName || parentName;
-  var memoizer = ownerHasKeyUseWarning[message] || (
-    (ownerHasKeyUseWarning[message] = {})
-  );
-  if (memoizer.hasOwnProperty(useName)) {
-    return;
-  }
-  memoizer[useName] = true;
-
-  var parentOrOwnerAddendum =
-    ownerName ? (" Check the render method of " + ownerName + ".") :
-    parentName ? (" Check the React.render call using <" + parentName + ">.") :
-    '';
-
-  // Usually the current owner is the offender, but if it accepts children as a
-  // property, it may be the creator of the child that's responsible for
-  // assigning it a key.
-  var childOwnerAddendum = '';
-  if (element &&
-      element._owner &&
-      element._owner !== ReactCurrentOwner.current) {
-    // Name of the component that originally created this child.
-    var childOwnerName = getName(element._owner);
-
-    childOwnerAddendum = (" It was passed a child from " + childOwnerName + ".");
-  }
-
-  ("production" !== process.env.NODE_ENV ? warning(
-    false,
-    message + '%s%s See https://fb.me/react-warning-keys for more information.',
-    parentOrOwnerAddendum,
-    childOwnerAddendum
-  ) : null);
-}
-
-/**
- * Ensure that every element either is passed in a static location, in an
- * array with an explicit keys property defined, or in an object literal
- * with valid key property.
- *
- * @internal
- * @param {ReactNode} node Statically passed child of any type.
- * @param {*} parentType node's parent's type.
- */
-function validateChildKeys(node, parentType) {
-  if (Array.isArray(node)) {
-    for (var i = 0; i < node.length; i++) {
-      var child = node[i];
-      if (ReactElement.isValidElement(child)) {
-        validateExplicitKey(child, parentType);
-      }
-    }
-  } else if (ReactElement.isValidElement(node)) {
-    // This element was passed in a valid location.
-    node._store.validated = true;
-  } else if (node) {
-    var iteratorFn = getIteratorFn(node);
-    // Entry iterators provide implicit keys.
-    if (iteratorFn) {
-      if (iteratorFn !== node.entries) {
-        var iterator = iteratorFn.call(node);
-        var step;
-        while (!(step = iterator.next()).done) {
-          if (ReactElement.isValidElement(step.value)) {
-            validateExplicitKey(step.value, parentType);
-          }
-        }
-      }
-    } else if (typeof node === 'object') {
-      var fragment = ReactFragment.extractIfFragment(node);
-      for (var key in fragment) {
-        if (fragment.hasOwnProperty(key)) {
-          validatePropertyKey(key, fragment[key], parentType);
-        }
-      }
-    }
-  }
-}
-
-/**
- * Assert that the props are valid
- *
- * @param {string} componentName Name of the component for error messages.
- * @param {object} propTypes Map of prop name to a ReactPropType
- * @param {object} props
- * @param {string} location e.g. "prop", "context", "child context"
- * @private
- */
-function checkPropTypes(componentName, propTypes, props, location) {
-  for (var propName in propTypes) {
-    if (propTypes.hasOwnProperty(propName)) {
-      var error;
-      // Prop type validation may throw. In case they do, we don't want to
-      // fail the render phase where it didn't fail before. So we log it.
-      // After these have been cleaned up, we'll let them throw.
-      try {
-        // This is intentionally an invariant that gets caught. It's the same
-        // behavior as without this statement except with a better message.
-        ("production" !== process.env.NODE_ENV ? invariant(
-          typeof propTypes[propName] === 'function',
-          '%s: %s type `%s` is invalid; it must be a function, usually from ' +
-          'React.PropTypes.',
-          componentName || 'React class',
-          ReactPropTypeLocationNames[location],
-          propName
-        ) : invariant(typeof propTypes[propName] === 'function'));
-        error = propTypes[propName](props, propName, componentName, location);
-      } catch (ex) {
-        error = ex;
-      }
-      if (error instanceof Error && !(error.message in loggedTypeFailures)) {
-        // Only monitor this failure once because there tends to be a lot of the
-        // same error.
-        loggedTypeFailures[error.message] = true;
-
-        var addendum = getDeclarationErrorAddendum(this);
-        ("production" !== process.env.NODE_ENV ? warning(false, 'Failed propType: %s%s', error.message, addendum) : null);
-      }
-    }
-  }
-}
-
-var warnedPropsMutations = {};
-
-/**
- * Warn about mutating props when setting `propName` on `element`.
- *
- * @param {string} propName The string key within props that was set
- * @param {ReactElement} element
- */
-function warnForPropsMutation(propName, element) {
-  var type = element.type;
-  var elementName = typeof type === 'string' ? type : type.displayName;
-  var ownerName = element._owner ?
-    element._owner.getPublicInstance().constructor.displayName : null;
-
-  var warningKey = propName + '|' + elementName + '|' + ownerName;
-  if (warnedPropsMutations.hasOwnProperty(warningKey)) {
-    return;
-  }
-  warnedPropsMutations[warningKey] = true;
-
-  var elementInfo = '';
-  if (elementName) {
-    elementInfo = ' <' + elementName + ' />';
-  }
-  var ownerInfo = '';
-  if (ownerName) {
-    ownerInfo = ' The element was created by ' + ownerName + '.';
-  }
-
-  ("production" !== process.env.NODE_ENV ? warning(
-    false,
-    'Don\'t set .props.%s of the React component%s. Instead, specify the ' +
-    'correct value when initially creating the element or use ' +
-    'React.cloneElement to make a new element with updated props.%s',
-    propName,
-    elementInfo,
-    ownerInfo
-  ) : null);
-}
-
-// Inline Object.is polyfill
-function is(a, b) {
-  if (a !== a) {
-    // NaN
-    return b !== b;
-  }
-  if (a === 0 && b === 0) {
-    // +-0
-    return 1 / a === 1 / b;
-  }
-  return a === b;
-}
-
-/**
- * Given an element, check if its props have been mutated since element
- * creation (or the last call to this function). In particular, check if any
- * new props have been added, which we can't directly catch by defining warning
- * properties on the props object.
- *
- * @param {ReactElement} element
- */
-function checkAndWarnForMutatedProps(element) {
-  if (!element._store) {
-    // Element was created using `new ReactElement` directly or with
-    // `ReactElement.createElement`; skip mutation checking
-    return;
-  }
-
-  var originalProps = element._store.originalProps;
-  var props = element.props;
-
-  for (var propName in props) {
-    if (props.hasOwnProperty(propName)) {
-      if (!originalProps.hasOwnProperty(propName) ||
-          !is(originalProps[propName], props[propName])) {
-        warnForPropsMutation(propName, element);
-
-        // Copy over the new value so that the two props objects match again
-        originalProps[propName] = props[propName];
-      }
-    }
-  }
-}
-
-/**
- * Given an element, validate that its props follow the propTypes definition,
- * provided by the type.
- *
- * @param {ReactElement} element
- */
-function validatePropTypes(element) {
-  if (element.type == null) {
-    // This has already warned. Don't throw.
-    return;
-  }
-  // Extract the component class from the element. Converts string types
-  // to a composite class which may have propTypes.
-  // TODO: Validating a string's propTypes is not decoupled from the
-  // rendering target which is problematic.
-  var componentClass = ReactNativeComponent.getComponentClassForElement(
-    element
-  );
-  var name = componentClass.displayName || componentClass.name;
-  if (componentClass.propTypes) {
-    checkPropTypes(
-      name,
-      componentClass.propTypes,
-      element.props,
-      ReactPropTypeLocations.prop
-    );
-  }
-  if (typeof componentClass.getDefaultProps === 'function') {
-    ("production" !== process.env.NODE_ENV ? warning(
-      componentClass.getDefaultProps.isReactClassApproved,
-      'getDefaultProps is only used on classic React.createClass ' +
-      'definitions. Use a static property named `defaultProps` instead.'
-    ) : null);
-  }
-}
-
-var ReactElementValidator = {
-
-  checkAndWarnForMutatedProps: checkAndWarnForMutatedProps,
-
-  createElement: function(type, props, children) {
-    // We warn in this case but don't throw. We expect the element creation to
-    // succeed and there will likely be errors in render.
-    ("production" !== process.env.NODE_ENV ? warning(
-      type != null,
-      'React.createElement: type should not be null or undefined. It should ' +
-        'be a string (for DOM elements) or a ReactClass (for composite ' +
-        'components).'
-    ) : null);
-
-    var element = ReactElement.createElement.apply(this, arguments);
-
-    // The result can be nullish if a mock or a custom function is used.
-    // TODO: Drop this when these are no longer allowed as the type argument.
-    if (element == null) {
-      return element;
-    }
-
-    for (var i = 2; i < arguments.length; i++) {
-      validateChildKeys(arguments[i], type);
-    }
-
-    validatePropTypes(element);
-
-    return element;
-  },
-
-  createFactory: function(type) {
-    var validatedFactory = ReactElementValidator.createElement.bind(
-      null,
-      type
-    );
-    // Legacy hook TODO: Warn if this is accessed
-    validatedFactory.type = type;
-
-    if ("production" !== process.env.NODE_ENV) {
-      try {
-        Object.defineProperty(
-          validatedFactory,
-          'type',
-          {
-            enumerable: false,
-            get: function() {
-              ("production" !== process.env.NODE_ENV ? warning(
-                false,
-                'Factory.type is deprecated. Access the class directly ' +
-                'before passing it to createFactory.'
-              ) : null);
-              Object.defineProperty(this, 'type', {
-                value: type
-              });
-              return type;
-            }
-          }
-        );
-      } catch (x) {
-        // IE will fail on defineProperty (es5-shim/sham too)
-      }
-    }
-
-
-    return validatedFactory;
-  },
-
-  cloneElement: function(element, props, children) {
-    var newElement = ReactElement.cloneElement.apply(this, arguments);
-    for (var i = 2; i < arguments.length; i++) {
-      validateChildKeys(arguments[i], newElement.type);
-    }
-    validatePropTypes(newElement);
-    return newElement;
-  }
-
-};
-
-module.exports = ReactElementValidator;
-
-},{ "./ReactCurrentOwner":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactCurrentOwner.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactFragment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactFragment.js","./ReactNativeComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactNativeComponent.js","./ReactPropTypeLocationNames":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPropTypeLocationNames.js","./ReactPropTypeLocations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPropTypeLocations.js","./getIteratorFn":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getIteratorFn.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js":[function(require,module,exports){
+},{ "./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./ReactComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactComponent.js","./ReactCurrentOwner":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactCurrentOwner.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactErrorUtils":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactErrorUtils.js","./ReactInstanceMap":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInstanceMap.js","./ReactLifeCycle":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactLifeCycle.js","./ReactPropTypeLocationNames":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPropTypeLocationNames.js","./ReactPropTypeLocations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPropTypeLocations.js","./ReactUpdateQueue":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdateQueue.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./keyMirror":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/keyMirror.js","./keyOf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/keyOf.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js":[function(require,module,exports){
 /**
  * Copyright 2014-2015, Facebook, Inc.
  * All rights reserved.
@@ -35731,281 +35268,470 @@ var ReactDOM = mapObject({
 
 module.exports = ReactDOM;
 
-},{ "./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactElementValidator":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElementValidator.js","./mapObject":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/mapObject.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMTextComponent.js":[function(require,module,exports){
+},{ "./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactElementValidator":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElementValidator.js","./mapObject":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/mapObject.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElementValidator.js":[function(require,module,exports){
 /**
- * Copyright 2013-2015, Facebook, Inc.
+ * Copyright 2014-2015, Facebook, Inc.
  * All rights reserved.
  *
  * This source code is licensed under the BSD-style license found in the
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
  *
- * @providesModule ReactDOMTextComponent
- * @typechecks static-only
+ * @providesModule ReactElementValidator
+ */
+
+/**
+ * ReactElementValidator provides a wrapper around a element factory
+ * which validates the props passed to the element. This is intended to be
+ * used only in DEV and could be replaced by a static type checker for languages
+ * that support it.
  */
 
 'use strict';
 
-var DOMPropertyOperations = require("./DOMPropertyOperations");
-var ReactComponentBrowserEnvironment =
-  require("./ReactComponentBrowserEnvironment");
-var ReactDOMComponent = require("./ReactDOMComponent");
+var ReactElement = require("./ReactElement");
+var ReactFragment = require("./ReactFragment");
+var ReactPropTypeLocations = require("./ReactPropTypeLocations");
+var ReactPropTypeLocationNames = require("./ReactPropTypeLocationNames");
+var ReactCurrentOwner = require("./ReactCurrentOwner");
+var ReactNativeComponent = require("./ReactNativeComponent");
 
-var assign = require("./Object.assign");
-var escapeTextContentForBrowser = require("./escapeTextContentForBrowser");
+var getIteratorFn = require("./getIteratorFn");
+var invariant = require("./invariant");
+var warning = require("./warning");
+
+function getDeclarationErrorAddendum() {
+  if (ReactCurrentOwner.current) {
+    var name = ReactCurrentOwner.current.getName();
+    if (name) {
+      return ' Check the render method of `' + name + '`.';
+    }
+  }
+  return '';
+}
 
 /**
- * Text nodes violate a couple assumptions that React makes about components:
- *
- *  - When mounting text into the DOM, adjacent text nodes are merged.
- *  - Text nodes cannot be assigned a React root ID.
- *
- * This component is used to wrap strings in elements so that they can undergo
- * the same reconciliation that is applied to elements.
- *
- * TODO: Investigate representing React components in the DOM with text nodes.
- *
- * @class ReactDOMTextComponent
- * @extends ReactComponent
- * @internal
+ * Warn if there's no key explicitly set on dynamic arrays of children or
+ * object keys are not valid. This allows us to keep track of children between
+ * updates.
  */
-var ReactDOMTextComponent = function(props) {
-  // This constructor and its argument is currently used by mocks.
-};
+var ownerHasKeyUseWarning = {};
 
-assign(ReactDOMTextComponent.prototype, {
+var loggedTypeFailures = {};
 
-  /**
-   * @param {ReactText} text
-   * @internal
-   */
-  construct: function(text) {
-    // TODO: This is really a ReactText (ReactNode), not a ReactElement
-    this._currentElement = text;
-    this._stringText = '' + text;
+var NUMERIC_PROPERTY_REGEX = /^\d+$/;
 
-    // Properties
-    this._rootNodeID = null;
-    this._mountIndex = 0;
-  },
+/**
+ * Gets the instance's name for use in warnings.
+ *
+ * @internal
+ * @return {?string} Display name or undefined
+ */
+function getName(instance) {
+  var publicInstance = instance && instance.getPublicInstance();
+  if (!publicInstance) {
+    return undefined;
+  }
+  var constructor = publicInstance.constructor;
+  if (!constructor) {
+    return undefined;
+  }
+  return constructor.displayName || constructor.name || undefined;
+}
 
-  /**
-   * Creates the markup for this text node. This node is not intended to have
-   * any features besides containing text content.
-   *
-   * @param {string} rootID DOM ID of the root node.
-   * @param {ReactReconcileTransaction|ReactServerRenderingTransaction} transaction
-   * @return {string} Markup for this text node.
-   * @internal
-   */
-  mountComponent: function(rootID, transaction, context) {
-    this._rootNodeID = rootID;
-    var escapedText = escapeTextContentForBrowser(this._stringText);
+/**
+ * Gets the current owner's displayName for use in warnings.
+ *
+ * @internal
+ * @return {?string} Display name or undefined
+ */
+function getCurrentOwnerDisplayName() {
+  var current = ReactCurrentOwner.current;
+  return (
+    current && getName(current) || undefined
+  );
+}
 
-    if (transaction.renderToStaticMarkup) {
-      // Normally we'd wrap this in a `span` for the reasons stated above, but
-      // since this is a situation where React won't take over (static pages),
-      // we can simply return the text as it is.
-      return escapedText;
-    }
+/**
+ * Warn if the element doesn't have an explicit key assigned to it.
+ * This element is in an array. The array could grow and shrink or be
+ * reordered. All children that haven't already been validated are required to
+ * have a "key" property assigned to it.
+ *
+ * @internal
+ * @param {ReactElement} element Element that requires a key.
+ * @param {*} parentType element's parent's type.
+ */
+function validateExplicitKey(element, parentType) {
+  if (element._store.validated || element.key != null) {
+    return;
+  }
+  element._store.validated = true;
 
-    return (
-      '<span ' + DOMPropertyOperations.createMarkupForID(rootID) + '>' +
-        escapedText +
-      '</span>'
-    );
-  },
+  warnAndMonitorForKeyUse(
+    'Each child in an array or iterator should have a unique "key" prop.',
+    element,
+    parentType
+  );
+}
 
-  /**
-   * Updates this component by updating the text content.
-   *
-   * @param {ReactText} nextText The next text content
-   * @param {ReactReconcileTransaction} transaction
-   * @internal
-   */
-  receiveComponent: function(nextText, transaction) {
-    if (nextText !== this._currentElement) {
-      this._currentElement = nextText;
-      var nextStringText = '' + nextText;
-      if (nextStringText !== this._stringText) {
-        // TODO: Save this as pending props and use performUpdateIfNecessary
-        // and/or updateComponent to do the actual update for consistency with
-        // other component types?
-        this._stringText = nextStringText;
-        ReactDOMComponent.BackendIDOperations.updateTextContentByID(
-          this._rootNodeID,
-          nextStringText
-        );
+/**
+ * Warn if the key is being defined as an object property but has an incorrect
+ * value.
+ *
+ * @internal
+ * @param {string} name Property name of the key.
+ * @param {ReactElement} element Component that requires a key.
+ * @param {*} parentType element's parent's type.
+ */
+function validatePropertyKey(name, element, parentType) {
+  if (!NUMERIC_PROPERTY_REGEX.test(name)) {
+    return;
+  }
+  warnAndMonitorForKeyUse(
+    'Child objects should have non-numeric keys so ordering is preserved.',
+    element,
+    parentType
+  );
+}
+
+/**
+ * Shared warning and monitoring code for the key warnings.
+ *
+ * @internal
+ * @param {string} message The base warning that gets output.
+ * @param {ReactElement} element Component that requires a key.
+ * @param {*} parentType element's parent's type.
+ */
+function warnAndMonitorForKeyUse(message, element, parentType) {
+  var ownerName = getCurrentOwnerDisplayName();
+  var parentName = typeof parentType === 'string' ?
+    parentType : parentType.displayName || parentType.name;
+
+  var useName = ownerName || parentName;
+  var memoizer = ownerHasKeyUseWarning[message] || (
+    (ownerHasKeyUseWarning[message] = {})
+  );
+  if (memoizer.hasOwnProperty(useName)) {
+    return;
+  }
+  memoizer[useName] = true;
+
+  var parentOrOwnerAddendum =
+    ownerName ? (" Check the render method of " + ownerName + ".") :
+    parentName ? (" Check the React.render call using <" + parentName + ">.") :
+    '';
+
+  // Usually the current owner is the offender, but if it accepts children as a
+  // property, it may be the creator of the child that's responsible for
+  // assigning it a key.
+  var childOwnerAddendum = '';
+  if (element &&
+      element._owner &&
+      element._owner !== ReactCurrentOwner.current) {
+    // Name of the component that originally created this child.
+    var childOwnerName = getName(element._owner);
+
+    childOwnerAddendum = (" It was passed a child from " + childOwnerName + ".");
+  }
+
+  ("production" !== process.env.NODE_ENV ? warning(
+    false,
+    message + '%s%s See https://fb.me/react-warning-keys for more information.',
+    parentOrOwnerAddendum,
+    childOwnerAddendum
+  ) : null);
+}
+
+/**
+ * Ensure that every element either is passed in a static location, in an
+ * array with an explicit keys property defined, or in an object literal
+ * with valid key property.
+ *
+ * @internal
+ * @param {ReactNode} node Statically passed child of any type.
+ * @param {*} parentType node's parent's type.
+ */
+function validateChildKeys(node, parentType) {
+  if (Array.isArray(node)) {
+    for (var i = 0; i < node.length; i++) {
+      var child = node[i];
+      if (ReactElement.isValidElement(child)) {
+        validateExplicitKey(child, parentType);
       }
     }
+  } else if (ReactElement.isValidElement(node)) {
+    // This element was passed in a valid location.
+    node._store.validated = true;
+  } else if (node) {
+    var iteratorFn = getIteratorFn(node);
+    // Entry iterators provide implicit keys.
+    if (iteratorFn) {
+      if (iteratorFn !== node.entries) {
+        var iterator = iteratorFn.call(node);
+        var step;
+        while (!(step = iterator.next()).done) {
+          if (ReactElement.isValidElement(step.value)) {
+            validateExplicitKey(step.value, parentType);
+          }
+        }
+      }
+    } else if (typeof node === 'object') {
+      var fragment = ReactFragment.extractIfFragment(node);
+      for (var key in fragment) {
+        if (fragment.hasOwnProperty(key)) {
+          validatePropertyKey(key, fragment[key], parentType);
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Assert that the props are valid
+ *
+ * @param {string} componentName Name of the component for error messages.
+ * @param {object} propTypes Map of prop name to a ReactPropType
+ * @param {object} props
+ * @param {string} location e.g. "prop", "context", "child context"
+ * @private
+ */
+function checkPropTypes(componentName, propTypes, props, location) {
+  for (var propName in propTypes) {
+    if (propTypes.hasOwnProperty(propName)) {
+      var error;
+      // Prop type validation may throw. In case they do, we don't want to
+      // fail the render phase where it didn't fail before. So we log it.
+      // After these have been cleaned up, we'll let them throw.
+      try {
+        // This is intentionally an invariant that gets caught. It's the same
+        // behavior as without this statement except with a better message.
+        ("production" !== process.env.NODE_ENV ? invariant(
+          typeof propTypes[propName] === 'function',
+          '%s: %s type `%s` is invalid; it must be a function, usually from ' +
+          'React.PropTypes.',
+          componentName || 'React class',
+          ReactPropTypeLocationNames[location],
+          propName
+        ) : invariant(typeof propTypes[propName] === 'function'));
+        error = propTypes[propName](props, propName, componentName, location);
+      } catch (ex) {
+        error = ex;
+      }
+      if (error instanceof Error && !(error.message in loggedTypeFailures)) {
+        // Only monitor this failure once because there tends to be a lot of the
+        // same error.
+        loggedTypeFailures[error.message] = true;
+
+        var addendum = getDeclarationErrorAddendum(this);
+        ("production" !== process.env.NODE_ENV ? warning(false, 'Failed propType: %s%s', error.message, addendum) : null);
+      }
+    }
+  }
+}
+
+var warnedPropsMutations = {};
+
+/**
+ * Warn about mutating props when setting `propName` on `element`.
+ *
+ * @param {string} propName The string key within props that was set
+ * @param {ReactElement} element
+ */
+function warnForPropsMutation(propName, element) {
+  var type = element.type;
+  var elementName = typeof type === 'string' ? type : type.displayName;
+  var ownerName = element._owner ?
+    element._owner.getPublicInstance().constructor.displayName : null;
+
+  var warningKey = propName + '|' + elementName + '|' + ownerName;
+  if (warnedPropsMutations.hasOwnProperty(warningKey)) {
+    return;
+  }
+  warnedPropsMutations[warningKey] = true;
+
+  var elementInfo = '';
+  if (elementName) {
+    elementInfo = ' <' + elementName + ' />';
+  }
+  var ownerInfo = '';
+  if (ownerName) {
+    ownerInfo = ' The element was created by ' + ownerName + '.';
+  }
+
+  ("production" !== process.env.NODE_ENV ? warning(
+    false,
+    'Don\'t set .props.%s of the React component%s. Instead, specify the ' +
+    'correct value when initially creating the element or use ' +
+    'React.cloneElement to make a new element with updated props.%s',
+    propName,
+    elementInfo,
+    ownerInfo
+  ) : null);
+}
+
+// Inline Object.is polyfill
+function is(a, b) {
+  if (a !== a) {
+    // NaN
+    return b !== b;
+  }
+  if (a === 0 && b === 0) {
+    // +-0
+    return 1 / a === 1 / b;
+  }
+  return a === b;
+}
+
+/**
+ * Given an element, check if its props have been mutated since element
+ * creation (or the last call to this function). In particular, check if any
+ * new props have been added, which we can't directly catch by defining warning
+ * properties on the props object.
+ *
+ * @param {ReactElement} element
+ */
+function checkAndWarnForMutatedProps(element) {
+  if (!element._store) {
+    // Element was created using `new ReactElement` directly or with
+    // `ReactElement.createElement`; skip mutation checking
+    return;
+  }
+
+  var originalProps = element._store.originalProps;
+  var props = element.props;
+
+  for (var propName in props) {
+    if (props.hasOwnProperty(propName)) {
+      if (!originalProps.hasOwnProperty(propName) ||
+          !is(originalProps[propName], props[propName])) {
+        warnForPropsMutation(propName, element);
+
+        // Copy over the new value so that the two props objects match again
+        originalProps[propName] = props[propName];
+      }
+    }
+  }
+}
+
+/**
+ * Given an element, validate that its props follow the propTypes definition,
+ * provided by the type.
+ *
+ * @param {ReactElement} element
+ */
+function validatePropTypes(element) {
+  if (element.type == null) {
+    // This has already warned. Don't throw.
+    return;
+  }
+  // Extract the component class from the element. Converts string types
+  // to a composite class which may have propTypes.
+  // TODO: Validating a string's propTypes is not decoupled from the
+  // rendering target which is problematic.
+  var componentClass = ReactNativeComponent.getComponentClassForElement(
+    element
+  );
+  var name = componentClass.displayName || componentClass.name;
+  if (componentClass.propTypes) {
+    checkPropTypes(
+      name,
+      componentClass.propTypes,
+      element.props,
+      ReactPropTypeLocations.prop
+    );
+  }
+  if (typeof componentClass.getDefaultProps === 'function') {
+    ("production" !== process.env.NODE_ENV ? warning(
+      componentClass.getDefaultProps.isReactClassApproved,
+      'getDefaultProps is only used on classic React.createClass ' +
+      'definitions. Use a static property named `defaultProps` instead.'
+    ) : null);
+  }
+}
+
+var ReactElementValidator = {
+
+  checkAndWarnForMutatedProps: checkAndWarnForMutatedProps,
+
+  createElement: function(type, props, children) {
+    // We warn in this case but don't throw. We expect the element creation to
+    // succeed and there will likely be errors in render.
+    ("production" !== process.env.NODE_ENV ? warning(
+      type != null,
+      'React.createElement: type should not be null or undefined. It should ' +
+        'be a string (for DOM elements) or a ReactClass (for composite ' +
+        'components).'
+    ) : null);
+
+    var element = ReactElement.createElement.apply(this, arguments);
+
+    // The result can be nullish if a mock or a custom function is used.
+    // TODO: Drop this when these are no longer allowed as the type argument.
+    if (element == null) {
+      return element;
+    }
+
+    for (var i = 2; i < arguments.length; i++) {
+      validateChildKeys(arguments[i], type);
+    }
+
+    validatePropTypes(element);
+
+    return element;
   },
 
-  unmountComponent: function() {
-    ReactComponentBrowserEnvironment.unmountIDFromEnvironment(this._rootNodeID);
+  createFactory: function(type) {
+    var validatedFactory = ReactElementValidator.createElement.bind(
+      null,
+      type
+    );
+    // Legacy hook TODO: Warn if this is accessed
+    validatedFactory.type = type;
+
+    if ("production" !== process.env.NODE_ENV) {
+      try {
+        Object.defineProperty(
+          validatedFactory,
+          'type',
+          {
+            enumerable: false,
+            get: function() {
+              ("production" !== process.env.NODE_ENV ? warning(
+                false,
+                'Factory.type is deprecated. Access the class directly ' +
+                'before passing it to createFactory.'
+              ) : null);
+              Object.defineProperty(this, 'type', {
+                value: type
+              });
+              return type;
+            }
+          }
+        );
+      } catch (x) {
+        // IE will fail on defineProperty (es5-shim/sham too)
+      }
+    }
+
+
+    return validatedFactory;
+  },
+
+  cloneElement: function(element, props, children) {
+    var newElement = ReactElement.cloneElement.apply(this, arguments);
+    for (var i = 2; i < arguments.length; i++) {
+      validateChildKeys(arguments[i], newElement.type);
+    }
+    validatePropTypes(newElement);
+    return newElement;
   }
 
-});
-
-module.exports = ReactDOMTextComponent;
-
-},{ "./DOMPropertyOperations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMPropertyOperations.js","./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./ReactComponentBrowserEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactComponentBrowserEnvironment.js","./ReactDOMComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMComponent.js","./escapeTextContentForBrowser":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/escapeTextContentForBrowser.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDefaultInjection.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule ReactDefaultInjection
- */
-
-'use strict';
-
-var BeforeInputEventPlugin = require("./BeforeInputEventPlugin");
-var ChangeEventPlugin = require("./ChangeEventPlugin");
-var ClientReactRootIndex = require("./ClientReactRootIndex");
-var DefaultEventPluginOrder = require("./DefaultEventPluginOrder");
-var EnterLeaveEventPlugin = require("./EnterLeaveEventPlugin");
-var ExecutionEnvironment = require("./ExecutionEnvironment");
-var HTMLDOMPropertyConfig = require("./HTMLDOMPropertyConfig");
-var MobileSafariClickEventPlugin = require("./MobileSafariClickEventPlugin");
-var ReactBrowserComponentMixin = require("./ReactBrowserComponentMixin");
-var ReactClass = require("./ReactClass");
-var ReactComponentBrowserEnvironment =
-  require("./ReactComponentBrowserEnvironment");
-var ReactDefaultBatchingStrategy = require("./ReactDefaultBatchingStrategy");
-var ReactDOMComponent = require("./ReactDOMComponent");
-var ReactDOMButton = require("./ReactDOMButton");
-var ReactDOMForm = require("./ReactDOMForm");
-var ReactDOMImg = require("./ReactDOMImg");
-var ReactDOMIDOperations = require("./ReactDOMIDOperations");
-var ReactDOMIframe = require("./ReactDOMIframe");
-var ReactDOMInput = require("./ReactDOMInput");
-var ReactDOMOption = require("./ReactDOMOption");
-var ReactDOMSelect = require("./ReactDOMSelect");
-var ReactDOMTextarea = require("./ReactDOMTextarea");
-var ReactDOMTextComponent = require("./ReactDOMTextComponent");
-var ReactElement = require("./ReactElement");
-var ReactEventListener = require("./ReactEventListener");
-var ReactInjection = require("./ReactInjection");
-var ReactInstanceHandles = require("./ReactInstanceHandles");
-var ReactMount = require("./ReactMount");
-var ReactReconcileTransaction = require("./ReactReconcileTransaction");
-var SelectEventPlugin = require("./SelectEventPlugin");
-var ServerReactRootIndex = require("./ServerReactRootIndex");
-var SimpleEventPlugin = require("./SimpleEventPlugin");
-var SVGDOMPropertyConfig = require("./SVGDOMPropertyConfig");
-
-var createFullPageComponent = require("./createFullPageComponent");
-
-function autoGenerateWrapperClass(type) {
-  return ReactClass.createClass({
-    tagName: type.toUpperCase(),
-    render: function() {
-      return new ReactElement(
-        type,
-        null,
-        null,
-        null,
-        null,
-        this.props
-      );
-    }
-  });
-}
-
-function inject() {
-  ReactInjection.EventEmitter.injectReactEventListener(
-    ReactEventListener
-  );
-
-  /**
-   * Inject modules for resolving DOM hierarchy and plugin ordering.
-   */
-  ReactInjection.EventPluginHub.injectEventPluginOrder(DefaultEventPluginOrder);
-  ReactInjection.EventPluginHub.injectInstanceHandle(ReactInstanceHandles);
-  ReactInjection.EventPluginHub.injectMount(ReactMount);
-
-  /**
-   * Some important event plugins included by default (without having to require
-   * them).
-   */
-  ReactInjection.EventPluginHub.injectEventPluginsByName({
-    SimpleEventPlugin: SimpleEventPlugin,
-    EnterLeaveEventPlugin: EnterLeaveEventPlugin,
-    ChangeEventPlugin: ChangeEventPlugin,
-    MobileSafariClickEventPlugin: MobileSafariClickEventPlugin,
-    SelectEventPlugin: SelectEventPlugin,
-    BeforeInputEventPlugin: BeforeInputEventPlugin
-  });
-
-  ReactInjection.NativeComponent.injectGenericComponentClass(
-    ReactDOMComponent
-  );
-
-  ReactInjection.NativeComponent.injectTextComponentClass(
-    ReactDOMTextComponent
-  );
-
-  ReactInjection.NativeComponent.injectAutoWrapper(
-    autoGenerateWrapperClass
-  );
-
-  // This needs to happen before createFullPageComponent() otherwise the mixin
-  // won't be included.
-  ReactInjection.Class.injectMixin(ReactBrowserComponentMixin);
-
-  ReactInjection.NativeComponent.injectComponentClasses({
-    'button': ReactDOMButton,
-    'form': ReactDOMForm,
-    'iframe': ReactDOMIframe,
-    'img': ReactDOMImg,
-    'input': ReactDOMInput,
-    'option': ReactDOMOption,
-    'select': ReactDOMSelect,
-    'textarea': ReactDOMTextarea,
-
-    'html': createFullPageComponent('html'),
-    'head': createFullPageComponent('head'),
-    'body': createFullPageComponent('body')
-  });
-
-  ReactInjection.DOMProperty.injectDOMPropertyConfig(HTMLDOMPropertyConfig);
-  ReactInjection.DOMProperty.injectDOMPropertyConfig(SVGDOMPropertyConfig);
-
-  ReactInjection.EmptyComponent.injectEmptyComponent('noscript');
-
-  ReactInjection.Updates.injectReconcileTransaction(
-    ReactReconcileTransaction
-  );
-  ReactInjection.Updates.injectBatchingStrategy(
-    ReactDefaultBatchingStrategy
-  );
-
-  ReactInjection.RootIndex.injectCreateReactRootIndex(
-    ExecutionEnvironment.canUseDOM ?
-      ClientReactRootIndex.createReactRootIndex :
-      ServerReactRootIndex.createReactRootIndex
-  );
-
-  ReactInjection.Component.injectEnvironment(ReactComponentBrowserEnvironment);
-  ReactInjection.DOMComponent.injectIDOperations(ReactDOMIDOperations);
-
-  if ("production" !== process.env.NODE_ENV) {
-    var url = (ExecutionEnvironment.canUseDOM && window.location.href) || '';
-    if ((/[?&]react_perf\b/).test(url)) {
-      var ReactDefaultPerf = require("./ReactDefaultPerf");
-      ReactDefaultPerf.start();
-    }
-  }
-}
-
-module.exports = {
-  inject: inject
 };
 
-},{ "./BeforeInputEventPlugin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/BeforeInputEventPlugin.js","./ChangeEventPlugin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ChangeEventPlugin.js","./ClientReactRootIndex":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ClientReactRootIndex.js","./DefaultEventPluginOrder":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DefaultEventPluginOrder.js","./EnterLeaveEventPlugin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EnterLeaveEventPlugin.js","./ExecutionEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ExecutionEnvironment.js","./HTMLDOMPropertyConfig":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/HTMLDOMPropertyConfig.js","./MobileSafariClickEventPlugin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/MobileSafariClickEventPlugin.js","./ReactBrowserComponentMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserComponentMixin.js","./ReactClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactClass.js","./ReactComponentBrowserEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactComponentBrowserEnvironment.js","./ReactDOMButton":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMButton.js","./ReactDOMComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMComponent.js","./ReactDOMForm":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMForm.js","./ReactDOMIDOperations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMIDOperations.js","./ReactDOMIframe":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMIframe.js","./ReactDOMImg":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMImg.js","./ReactDOMInput":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMInput.js","./ReactDOMOption":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMOption.js","./ReactDOMSelect":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMSelect.js","./ReactDOMTextComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMTextComponent.js","./ReactDOMTextarea":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMTextarea.js","./ReactDefaultBatchingStrategy":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDefaultBatchingStrategy.js","./ReactDefaultPerf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDefaultPerf.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactEventListener":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactEventListener.js","./ReactInjection":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInjection.js","./ReactInstanceHandles":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInstanceHandles.js","./ReactMount":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMount.js","./ReactReconcileTransaction":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactReconcileTransaction.js","./SVGDOMPropertyConfig":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SVGDOMPropertyConfig.js","./SelectEventPlugin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SelectEventPlugin.js","./ServerReactRootIndex":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ServerReactRootIndex.js","./SimpleEventPlugin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SimpleEventPlugin.js","./createFullPageComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/createFullPageComponent.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInstanceHandles.js":[function(require,module,exports){
+module.exports = ReactElementValidator;
+
+},{ "./ReactCurrentOwner":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactCurrentOwner.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactFragment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactFragment.js","./ReactNativeComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactNativeComponent.js","./ReactPropTypeLocationNames":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPropTypeLocationNames.js","./ReactPropTypeLocations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPropTypeLocations.js","./getIteratorFn":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getIteratorFn.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInstanceHandles.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -36339,7 +36065,7 @@ var ReactInstanceHandles = {
 
 module.exports = ReactInstanceHandles;
 
-},{ "./ReactRootIndex":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactRootIndex.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPropTypes.js":[function(require,module,exports){
+},{ "./ReactRootIndex":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactRootIndex.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMTextComponent.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -36348,347 +36074,272 @@ module.exports = ReactInstanceHandles;
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
  *
- * @providesModule ReactPropTypes
+ * @providesModule ReactDOMTextComponent
+ * @typechecks static-only
  */
 
 'use strict';
 
-var ReactElement = require("./ReactElement");
-var ReactFragment = require("./ReactFragment");
-var ReactPropTypeLocationNames = require("./ReactPropTypeLocationNames");
+var DOMPropertyOperations = require("./DOMPropertyOperations");
+var ReactComponentBrowserEnvironment =
+  require("./ReactComponentBrowserEnvironment");
+var ReactDOMComponent = require("./ReactDOMComponent");
 
-var emptyFunction = require("./emptyFunction");
+var assign = require("./Object.assign");
+var escapeTextContentForBrowser = require("./escapeTextContentForBrowser");
 
 /**
- * Collection of methods that allow declaration and validation of props that are
- * supplied to React components. Example usage:
+ * Text nodes violate a couple assumptions that React makes about components:
  *
- *   var Props = require('ReactPropTypes');
- *   var MyArticle = React.createClass({
- *     propTypes: {
- *       // An optional string prop named "description".
- *       description: Props.string,
+ *  - When mounting text into the DOM, adjacent text nodes are merged.
+ *  - Text nodes cannot be assigned a React root ID.
  *
- *       // A required enum prop named "category".
- *       category: Props.oneOf(['News','Photos']).isRequired,
+ * This component is used to wrap strings in elements so that they can undergo
+ * the same reconciliation that is applied to elements.
  *
- *       // A prop named "dialog" that requires an instance of Dialog.
- *       dialog: Props.instanceOf(Dialog).isRequired
- *     },
- *     render: function() { ... }
- *   });
+ * TODO: Investigate representing React components in the DOM with text nodes.
  *
- * A more formal specification of how these methods are used:
- *
- *   type := array|bool|func|object|number|string|oneOf([...])|instanceOf(...)
- *   decl := ReactPropTypes.{type}(.isRequired)?
- *
- * Each and every declaration produces a function with the same signature. This
- * allows the creation of custom validation functions. For example:
- *
- *  var MyLink = React.createClass({
- *    propTypes: {
- *      // An optional string or URI prop named "href".
- *      href: function(props, propName, componentName) {
- *        var propValue = props[propName];
- *        if (propValue != null && typeof propValue !== 'string' &&
- *            !(propValue instanceof URI)) {
- *          return new Error(
- *            'Expected a string or an URI for ' + propName + ' in ' +
- *            componentName
- *          );
- *        }
- *      }
- *    },
- *    render: function() {...}
- *  });
- *
+ * @class ReactDOMTextComponent
+ * @extends ReactComponent
  * @internal
  */
-
-var ANONYMOUS = '<<anonymous>>';
-
-var elementTypeChecker = createElementTypeChecker();
-var nodeTypeChecker = createNodeChecker();
-
-var ReactPropTypes = {
-  array: createPrimitiveTypeChecker('array'),
-  bool: createPrimitiveTypeChecker('boolean'),
-  func: createPrimitiveTypeChecker('function'),
-  number: createPrimitiveTypeChecker('number'),
-  object: createPrimitiveTypeChecker('object'),
-  string: createPrimitiveTypeChecker('string'),
-
-  any: createAnyTypeChecker(),
-  arrayOf: createArrayOfTypeChecker,
-  element: elementTypeChecker,
-  instanceOf: createInstanceTypeChecker,
-  node: nodeTypeChecker,
-  objectOf: createObjectOfTypeChecker,
-  oneOf: createEnumTypeChecker,
-  oneOfType: createUnionTypeChecker,
-  shape: createShapeTypeChecker
+var ReactDOMTextComponent = function(props) {
+  // This constructor and its argument is currently used by mocks.
 };
 
-function createChainableTypeChecker(validate) {
-  function checkType(isRequired, props, propName, componentName, location) {
-    componentName = componentName || ANONYMOUS;
-    if (props[propName] == null) {
-      var locationName = ReactPropTypeLocationNames[location];
-      if (isRequired) {
-        return new Error(
-          ("Required " + locationName + " `" + propName + "` was not specified in ") +
-          ("`" + componentName + "`.")
+assign(ReactDOMTextComponent.prototype, {
+
+  /**
+   * @param {ReactText} text
+   * @internal
+   */
+  construct: function(text) {
+    // TODO: This is really a ReactText (ReactNode), not a ReactElement
+    this._currentElement = text;
+    this._stringText = '' + text;
+
+    // Properties
+    this._rootNodeID = null;
+    this._mountIndex = 0;
+  },
+
+  /**
+   * Creates the markup for this text node. This node is not intended to have
+   * any features besides containing text content.
+   *
+   * @param {string} rootID DOM ID of the root node.
+   * @param {ReactReconcileTransaction|ReactServerRenderingTransaction} transaction
+   * @return {string} Markup for this text node.
+   * @internal
+   */
+  mountComponent: function(rootID, transaction, context) {
+    this._rootNodeID = rootID;
+    var escapedText = escapeTextContentForBrowser(this._stringText);
+
+    if (transaction.renderToStaticMarkup) {
+      // Normally we'd wrap this in a `span` for the reasons stated above, but
+      // since this is a situation where React won't take over (static pages),
+      // we can simply return the text as it is.
+      return escapedText;
+    }
+
+    return (
+      '<span ' + DOMPropertyOperations.createMarkupForID(rootID) + '>' +
+        escapedText +
+      '</span>'
+    );
+  },
+
+  /**
+   * Updates this component by updating the text content.
+   *
+   * @param {ReactText} nextText The next text content
+   * @param {ReactReconcileTransaction} transaction
+   * @internal
+   */
+  receiveComponent: function(nextText, transaction) {
+    if (nextText !== this._currentElement) {
+      this._currentElement = nextText;
+      var nextStringText = '' + nextText;
+      if (nextStringText !== this._stringText) {
+        // TODO: Save this as pending props and use performUpdateIfNecessary
+        // and/or updateComponent to do the actual update for consistency with
+        // other component types?
+        this._stringText = nextStringText;
+        ReactDOMComponent.BackendIDOperations.updateTextContentByID(
+          this._rootNodeID,
+          nextStringText
         );
       }
-      return null;
-    } else {
-      return validate(props, propName, componentName, location);
     }
+  },
+
+  unmountComponent: function() {
+    ReactComponentBrowserEnvironment.unmountIDFromEnvironment(this._rootNodeID);
   }
 
-  var chainedCheckType = checkType.bind(null, false);
-  chainedCheckType.isRequired = checkType.bind(null, true);
+});
 
-  return chainedCheckType;
-}
+module.exports = ReactDOMTextComponent;
 
-function createPrimitiveTypeChecker(expectedType) {
-  function validate(props, propName, componentName, location) {
-    var propValue = props[propName];
-    var propType = getPropType(propValue);
-    if (propType !== expectedType) {
-      var locationName = ReactPropTypeLocationNames[location];
-      // `propValue` being instance of, say, date/regexp, pass the 'object'
-      // check, but we can offer a more precise error message here rather than
-      // 'of type `object`'.
-      var preciseType = getPreciseType(propValue);
+},{ "./DOMPropertyOperations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMPropertyOperations.js","./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./ReactComponentBrowserEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactComponentBrowserEnvironment.js","./ReactDOMComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMComponent.js","./escapeTextContentForBrowser":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/escapeTextContentForBrowser.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDefaultInjection.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactDefaultInjection
+ */
 
-      return new Error(
-        ("Invalid " + locationName + " `" + propName + "` of type `" + preciseType + "` ") +
-        ("supplied to `" + componentName + "`, expected `" + expectedType + "`.")
+'use strict';
+
+var BeforeInputEventPlugin = require("./BeforeInputEventPlugin");
+var ChangeEventPlugin = require("./ChangeEventPlugin");
+var ClientReactRootIndex = require("./ClientReactRootIndex");
+var DefaultEventPluginOrder = require("./DefaultEventPluginOrder");
+var EnterLeaveEventPlugin = require("./EnterLeaveEventPlugin");
+var ExecutionEnvironment = require("./ExecutionEnvironment");
+var HTMLDOMPropertyConfig = require("./HTMLDOMPropertyConfig");
+var MobileSafariClickEventPlugin = require("./MobileSafariClickEventPlugin");
+var ReactBrowserComponentMixin = require("./ReactBrowserComponentMixin");
+var ReactClass = require("./ReactClass");
+var ReactComponentBrowserEnvironment =
+  require("./ReactComponentBrowserEnvironment");
+var ReactDefaultBatchingStrategy = require("./ReactDefaultBatchingStrategy");
+var ReactDOMComponent = require("./ReactDOMComponent");
+var ReactDOMButton = require("./ReactDOMButton");
+var ReactDOMForm = require("./ReactDOMForm");
+var ReactDOMImg = require("./ReactDOMImg");
+var ReactDOMIDOperations = require("./ReactDOMIDOperations");
+var ReactDOMIframe = require("./ReactDOMIframe");
+var ReactDOMInput = require("./ReactDOMInput");
+var ReactDOMOption = require("./ReactDOMOption");
+var ReactDOMSelect = require("./ReactDOMSelect");
+var ReactDOMTextarea = require("./ReactDOMTextarea");
+var ReactDOMTextComponent = require("./ReactDOMTextComponent");
+var ReactElement = require("./ReactElement");
+var ReactEventListener = require("./ReactEventListener");
+var ReactInjection = require("./ReactInjection");
+var ReactInstanceHandles = require("./ReactInstanceHandles");
+var ReactMount = require("./ReactMount");
+var ReactReconcileTransaction = require("./ReactReconcileTransaction");
+var SelectEventPlugin = require("./SelectEventPlugin");
+var ServerReactRootIndex = require("./ServerReactRootIndex");
+var SimpleEventPlugin = require("./SimpleEventPlugin");
+var SVGDOMPropertyConfig = require("./SVGDOMPropertyConfig");
+
+var createFullPageComponent = require("./createFullPageComponent");
+
+function autoGenerateWrapperClass(type) {
+  return ReactClass.createClass({
+    tagName: type.toUpperCase(),
+    render: function() {
+      return new ReactElement(
+        type,
+        null,
+        null,
+        null,
+        null,
+        this.props
       );
     }
-    return null;
-  }
-  return createChainableTypeChecker(validate);
+  });
 }
 
-function createAnyTypeChecker() {
-  return createChainableTypeChecker(emptyFunction.thatReturns(null));
-}
+function inject() {
+  ReactInjection.EventEmitter.injectReactEventListener(
+    ReactEventListener
+  );
 
-function createArrayOfTypeChecker(typeChecker) {
-  function validate(props, propName, componentName, location) {
-    var propValue = props[propName];
-    if (!Array.isArray(propValue)) {
-      var locationName = ReactPropTypeLocationNames[location];
-      var propType = getPropType(propValue);
-      return new Error(
-        ("Invalid " + locationName + " `" + propName + "` of type ") +
-        ("`" + propType + "` supplied to `" + componentName + "`, expected an array.")
-      );
-    }
-    for (var i = 0; i < propValue.length; i++) {
-      var error = typeChecker(propValue, i, componentName, location);
-      if (error instanceof Error) {
-        return error;
-      }
-    }
-    return null;
-  }
-  return createChainableTypeChecker(validate);
-}
+  /**
+   * Inject modules for resolving DOM hierarchy and plugin ordering.
+   */
+  ReactInjection.EventPluginHub.injectEventPluginOrder(DefaultEventPluginOrder);
+  ReactInjection.EventPluginHub.injectInstanceHandle(ReactInstanceHandles);
+  ReactInjection.EventPluginHub.injectMount(ReactMount);
 
-function createElementTypeChecker() {
-  function validate(props, propName, componentName, location) {
-    if (!ReactElement.isValidElement(props[propName])) {
-      var locationName = ReactPropTypeLocationNames[location];
-      return new Error(
-        ("Invalid " + locationName + " `" + propName + "` supplied to ") +
-        ("`" + componentName + "`, expected a ReactElement.")
-      );
-    }
-    return null;
-  }
-  return createChainableTypeChecker(validate);
-}
+  /**
+   * Some important event plugins included by default (without having to require
+   * them).
+   */
+  ReactInjection.EventPluginHub.injectEventPluginsByName({
+    SimpleEventPlugin: SimpleEventPlugin,
+    EnterLeaveEventPlugin: EnterLeaveEventPlugin,
+    ChangeEventPlugin: ChangeEventPlugin,
+    MobileSafariClickEventPlugin: MobileSafariClickEventPlugin,
+    SelectEventPlugin: SelectEventPlugin,
+    BeforeInputEventPlugin: BeforeInputEventPlugin
+  });
 
-function createInstanceTypeChecker(expectedClass) {
-  function validate(props, propName, componentName, location) {
-    if (!(props[propName] instanceof expectedClass)) {
-      var locationName = ReactPropTypeLocationNames[location];
-      var expectedClassName = expectedClass.name || ANONYMOUS;
-      return new Error(
-        ("Invalid " + locationName + " `" + propName + "` supplied to ") +
-        ("`" + componentName + "`, expected instance of `" + expectedClassName + "`.")
-      );
-    }
-    return null;
-  }
-  return createChainableTypeChecker(validate);
-}
+  ReactInjection.NativeComponent.injectGenericComponentClass(
+    ReactDOMComponent
+  );
 
-function createEnumTypeChecker(expectedValues) {
-  function validate(props, propName, componentName, location) {
-    var propValue = props[propName];
-    for (var i = 0; i < expectedValues.length; i++) {
-      if (propValue === expectedValues[i]) {
-        return null;
-      }
-    }
+  ReactInjection.NativeComponent.injectTextComponentClass(
+    ReactDOMTextComponent
+  );
 
-    var locationName = ReactPropTypeLocationNames[location];
-    var valuesString = JSON.stringify(expectedValues);
-    return new Error(
-      ("Invalid " + locationName + " `" + propName + "` of value `" + propValue + "` ") +
-      ("supplied to `" + componentName + "`, expected one of " + valuesString + ".")
-    );
-  }
-  return createChainableTypeChecker(validate);
-}
+  ReactInjection.NativeComponent.injectAutoWrapper(
+    autoGenerateWrapperClass
+  );
 
-function createObjectOfTypeChecker(typeChecker) {
-  function validate(props, propName, componentName, location) {
-    var propValue = props[propName];
-    var propType = getPropType(propValue);
-    if (propType !== 'object') {
-      var locationName = ReactPropTypeLocationNames[location];
-      return new Error(
-        ("Invalid " + locationName + " `" + propName + "` of type ") +
-        ("`" + propType + "` supplied to `" + componentName + "`, expected an object.")
-      );
-    }
-    for (var key in propValue) {
-      if (propValue.hasOwnProperty(key)) {
-        var error = typeChecker(propValue, key, componentName, location);
-        if (error instanceof Error) {
-          return error;
-        }
-      }
-    }
-    return null;
-  }
-  return createChainableTypeChecker(validate);
-}
+  // This needs to happen before createFullPageComponent() otherwise the mixin
+  // won't be included.
+  ReactInjection.Class.injectMixin(ReactBrowserComponentMixin);
 
-function createUnionTypeChecker(arrayOfTypeCheckers) {
-  function validate(props, propName, componentName, location) {
-    for (var i = 0; i < arrayOfTypeCheckers.length; i++) {
-      var checker = arrayOfTypeCheckers[i];
-      if (checker(props, propName, componentName, location) == null) {
-        return null;
-      }
-    }
+  ReactInjection.NativeComponent.injectComponentClasses({
+    'button': ReactDOMButton,
+    'form': ReactDOMForm,
+    'iframe': ReactDOMIframe,
+    'img': ReactDOMImg,
+    'input': ReactDOMInput,
+    'option': ReactDOMOption,
+    'select': ReactDOMSelect,
+    'textarea': ReactDOMTextarea,
 
-    var locationName = ReactPropTypeLocationNames[location];
-    return new Error(
-      ("Invalid " + locationName + " `" + propName + "` supplied to ") +
-      ("`" + componentName + "`.")
-    );
-  }
-  return createChainableTypeChecker(validate);
-}
+    'html': createFullPageComponent('html'),
+    'head': createFullPageComponent('head'),
+    'body': createFullPageComponent('body')
+  });
 
-function createNodeChecker() {
-  function validate(props, propName, componentName, location) {
-    if (!isNode(props[propName])) {
-      var locationName = ReactPropTypeLocationNames[location];
-      return new Error(
-        ("Invalid " + locationName + " `" + propName + "` supplied to ") +
-        ("`" + componentName + "`, expected a ReactNode.")
-      );
-    }
-    return null;
-  }
-  return createChainableTypeChecker(validate);
-}
+  ReactInjection.DOMProperty.injectDOMPropertyConfig(HTMLDOMPropertyConfig);
+  ReactInjection.DOMProperty.injectDOMPropertyConfig(SVGDOMPropertyConfig);
 
-function createShapeTypeChecker(shapeTypes) {
-  function validate(props, propName, componentName, location) {
-    var propValue = props[propName];
-    var propType = getPropType(propValue);
-    if (propType !== 'object') {
-      var locationName = ReactPropTypeLocationNames[location];
-      return new Error(
-        ("Invalid " + locationName + " `" + propName + "` of type `" + propType + "` ") +
-        ("supplied to `" + componentName + "`, expected `object`.")
-      );
-    }
-    for (var key in shapeTypes) {
-      var checker = shapeTypes[key];
-      if (!checker) {
-        continue;
-      }
-      var error = checker(propValue, key, componentName, location);
-      if (error) {
-        return error;
-      }
-    }
-    return null;
-  }
-  return createChainableTypeChecker(validate);
-}
+  ReactInjection.EmptyComponent.injectEmptyComponent('noscript');
 
-function isNode(propValue) {
-  switch (typeof propValue) {
-    case 'number':
-    case 'string':
-    case 'undefined':
-      return true;
-    case 'boolean':
-      return !propValue;
-    case 'object':
-      if (Array.isArray(propValue)) {
-        return propValue.every(isNode);
-      }
-      if (propValue === null || ReactElement.isValidElement(propValue)) {
-        return true;
-      }
-      propValue = ReactFragment.extractIfFragment(propValue);
-      for (var k in propValue) {
-        if (!isNode(propValue[k])) {
-          return false;
-        }
-      }
-      return true;
-    default:
-      return false;
-  }
-}
+  ReactInjection.Updates.injectReconcileTransaction(
+    ReactReconcileTransaction
+  );
+  ReactInjection.Updates.injectBatchingStrategy(
+    ReactDefaultBatchingStrategy
+  );
 
-// Equivalent of `typeof` but with special handling for array and regexp.
-function getPropType(propValue) {
-  var propType = typeof propValue;
-  if (Array.isArray(propValue)) {
-    return 'array';
-  }
-  if (propValue instanceof RegExp) {
-    // Old webkits (at least until Android 4.0) return 'function' rather than
-    // 'object' for typeof a RegExp. We'll normalize this here so that /bla/
-    // passes PropTypes.object.
-    return 'object';
-  }
-  return propType;
-}
+  ReactInjection.RootIndex.injectCreateReactRootIndex(
+    ExecutionEnvironment.canUseDOM ?
+      ClientReactRootIndex.createReactRootIndex :
+      ServerReactRootIndex.createReactRootIndex
+  );
 
-// This handles more types than `getPropType`. Only used for error messages.
-// See `createPrimitiveTypeChecker`.
-function getPreciseType(propValue) {
-  var propType = getPropType(propValue);
-  if (propType === 'object') {
-    if (propValue instanceof Date) {
-      return 'date';
-    } else if (propValue instanceof RegExp) {
-      return 'regexp';
+  ReactInjection.Component.injectEnvironment(ReactComponentBrowserEnvironment);
+  ReactInjection.DOMComponent.injectIDOperations(ReactDOMIDOperations);
+
+  if ("production" !== process.env.NODE_ENV) {
+    var url = (ExecutionEnvironment.canUseDOM && window.location.href) || '';
+    if ((/[?&]react_perf\b/).test(url)) {
+      var ReactDefaultPerf = require("./ReactDefaultPerf");
+      ReactDefaultPerf.start();
     }
   }
-  return propType;
 }
 
-module.exports = ReactPropTypes;
+module.exports = {
+  inject: inject
+};
 
-},{ "./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactFragment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactFragment.js","./ReactPropTypeLocationNames":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPropTypeLocationNames.js","./emptyFunction":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/emptyFunction.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMount.js":[function(require,module,exports){
+},{ "./BeforeInputEventPlugin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/BeforeInputEventPlugin.js","./ChangeEventPlugin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ChangeEventPlugin.js","./ClientReactRootIndex":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ClientReactRootIndex.js","./DefaultEventPluginOrder":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DefaultEventPluginOrder.js","./EnterLeaveEventPlugin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EnterLeaveEventPlugin.js","./ExecutionEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ExecutionEnvironment.js","./HTMLDOMPropertyConfig":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/HTMLDOMPropertyConfig.js","./MobileSafariClickEventPlugin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/MobileSafariClickEventPlugin.js","./ReactBrowserComponentMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserComponentMixin.js","./ReactClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactClass.js","./ReactComponentBrowserEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactComponentBrowserEnvironment.js","./ReactDOMButton":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMButton.js","./ReactDOMComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMComponent.js","./ReactDOMForm":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMForm.js","./ReactDOMIDOperations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMIDOperations.js","./ReactDOMIframe":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMIframe.js","./ReactDOMImg":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMImg.js","./ReactDOMInput":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMInput.js","./ReactDOMOption":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMOption.js","./ReactDOMSelect":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMSelect.js","./ReactDOMTextComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMTextComponent.js","./ReactDOMTextarea":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMTextarea.js","./ReactDefaultBatchingStrategy":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDefaultBatchingStrategy.js","./ReactDefaultPerf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDefaultPerf.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactEventListener":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactEventListener.js","./ReactInjection":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInjection.js","./ReactInstanceHandles":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInstanceHandles.js","./ReactMount":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMount.js","./ReactReconcileTransaction":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactReconcileTransaction.js","./SVGDOMPropertyConfig":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SVGDOMPropertyConfig.js","./SelectEventPlugin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SelectEventPlugin.js","./ServerReactRootIndex":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ServerReactRootIndex.js","./SimpleEventPlugin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SimpleEventPlugin.js","./createFullPageComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/createFullPageComponent.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMount.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -37699,7 +37350,436 @@ var ReactReconciler = {
 
 module.exports = ReactReconciler;
 
-},{ "./ReactElementValidator":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElementValidator.js","./ReactRef":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactRef.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/findDOMNode.js":[function(require,module,exports){
+},{ "./ReactElementValidator":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElementValidator.js","./ReactRef":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactRef.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactServerRendering.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @typechecks static-only
+ * @providesModule ReactServerRendering
+ */
+'use strict';
+
+var ReactElement = require("./ReactElement");
+var ReactInstanceHandles = require("./ReactInstanceHandles");
+var ReactMarkupChecksum = require("./ReactMarkupChecksum");
+var ReactServerRenderingTransaction =
+  require("./ReactServerRenderingTransaction");
+
+var emptyObject = require("./emptyObject");
+var instantiateReactComponent = require("./instantiateReactComponent");
+var invariant = require("./invariant");
+
+/**
+ * @param {ReactElement} element
+ * @return {string} the HTML markup
+ */
+function renderToString(element) {
+  ("production" !== process.env.NODE_ENV ? invariant(
+    ReactElement.isValidElement(element),
+    'renderToString(): You must pass a valid ReactElement.'
+  ) : invariant(ReactElement.isValidElement(element)));
+
+  var transaction;
+  try {
+    var id = ReactInstanceHandles.createReactRootID();
+    transaction = ReactServerRenderingTransaction.getPooled(false);
+
+    return transaction.perform(function() {
+      var componentInstance = instantiateReactComponent(element, null);
+      var markup =
+        componentInstance.mountComponent(id, transaction, emptyObject);
+      return ReactMarkupChecksum.addChecksumToMarkup(markup);
+    }, null);
+  } finally {
+    ReactServerRenderingTransaction.release(transaction);
+  }
+}
+
+/**
+ * @param {ReactElement} element
+ * @return {string} the HTML markup, without the extra React ID and checksum
+ * (for generating static pages)
+ */
+function renderToStaticMarkup(element) {
+  ("production" !== process.env.NODE_ENV ? invariant(
+    ReactElement.isValidElement(element),
+    'renderToStaticMarkup(): You must pass a valid ReactElement.'
+  ) : invariant(ReactElement.isValidElement(element)));
+
+  var transaction;
+  try {
+    var id = ReactInstanceHandles.createReactRootID();
+    transaction = ReactServerRenderingTransaction.getPooled(true);
+
+    return transaction.perform(function() {
+      var componentInstance = instantiateReactComponent(element, null);
+      return componentInstance.mountComponent(id, transaction, emptyObject);
+    }, null);
+  } finally {
+    ReactServerRenderingTransaction.release(transaction);
+  }
+}
+
+module.exports = {
+  renderToString: renderToString,
+  renderToStaticMarkup: renderToStaticMarkup
+};
+
+},{ "./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactInstanceHandles":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInstanceHandles.js","./ReactMarkupChecksum":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMarkupChecksum.js","./ReactServerRenderingTransaction":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactServerRenderingTransaction.js","./emptyObject":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/emptyObject.js","./instantiateReactComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/instantiateReactComponent.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPropTypes.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactPropTypes
+ */
+
+'use strict';
+
+var ReactElement = require("./ReactElement");
+var ReactFragment = require("./ReactFragment");
+var ReactPropTypeLocationNames = require("./ReactPropTypeLocationNames");
+
+var emptyFunction = require("./emptyFunction");
+
+/**
+ * Collection of methods that allow declaration and validation of props that are
+ * supplied to React components. Example usage:
+ *
+ *   var Props = require('ReactPropTypes');
+ *   var MyArticle = React.createClass({
+ *     propTypes: {
+ *       // An optional string prop named "description".
+ *       description: Props.string,
+ *
+ *       // A required enum prop named "category".
+ *       category: Props.oneOf(['News','Photos']).isRequired,
+ *
+ *       // A prop named "dialog" that requires an instance of Dialog.
+ *       dialog: Props.instanceOf(Dialog).isRequired
+ *     },
+ *     render: function() { ... }
+ *   });
+ *
+ * A more formal specification of how these methods are used:
+ *
+ *   type := array|bool|func|object|number|string|oneOf([...])|instanceOf(...)
+ *   decl := ReactPropTypes.{type}(.isRequired)?
+ *
+ * Each and every declaration produces a function with the same signature. This
+ * allows the creation of custom validation functions. For example:
+ *
+ *  var MyLink = React.createClass({
+ *    propTypes: {
+ *      // An optional string or URI prop named "href".
+ *      href: function(props, propName, componentName) {
+ *        var propValue = props[propName];
+ *        if (propValue != null && typeof propValue !== 'string' &&
+ *            !(propValue instanceof URI)) {
+ *          return new Error(
+ *            'Expected a string or an URI for ' + propName + ' in ' +
+ *            componentName
+ *          );
+ *        }
+ *      }
+ *    },
+ *    render: function() {...}
+ *  });
+ *
+ * @internal
+ */
+
+var ANONYMOUS = '<<anonymous>>';
+
+var elementTypeChecker = createElementTypeChecker();
+var nodeTypeChecker = createNodeChecker();
+
+var ReactPropTypes = {
+  array: createPrimitiveTypeChecker('array'),
+  bool: createPrimitiveTypeChecker('boolean'),
+  func: createPrimitiveTypeChecker('function'),
+  number: createPrimitiveTypeChecker('number'),
+  object: createPrimitiveTypeChecker('object'),
+  string: createPrimitiveTypeChecker('string'),
+
+  any: createAnyTypeChecker(),
+  arrayOf: createArrayOfTypeChecker,
+  element: elementTypeChecker,
+  instanceOf: createInstanceTypeChecker,
+  node: nodeTypeChecker,
+  objectOf: createObjectOfTypeChecker,
+  oneOf: createEnumTypeChecker,
+  oneOfType: createUnionTypeChecker,
+  shape: createShapeTypeChecker
+};
+
+function createChainableTypeChecker(validate) {
+  function checkType(isRequired, props, propName, componentName, location) {
+    componentName = componentName || ANONYMOUS;
+    if (props[propName] == null) {
+      var locationName = ReactPropTypeLocationNames[location];
+      if (isRequired) {
+        return new Error(
+          ("Required " + locationName + " `" + propName + "` was not specified in ") +
+          ("`" + componentName + "`.")
+        );
+      }
+      return null;
+    } else {
+      return validate(props, propName, componentName, location);
+    }
+  }
+
+  var chainedCheckType = checkType.bind(null, false);
+  chainedCheckType.isRequired = checkType.bind(null, true);
+
+  return chainedCheckType;
+}
+
+function createPrimitiveTypeChecker(expectedType) {
+  function validate(props, propName, componentName, location) {
+    var propValue = props[propName];
+    var propType = getPropType(propValue);
+    if (propType !== expectedType) {
+      var locationName = ReactPropTypeLocationNames[location];
+      // `propValue` being instance of, say, date/regexp, pass the 'object'
+      // check, but we can offer a more precise error message here rather than
+      // 'of type `object`'.
+      var preciseType = getPreciseType(propValue);
+
+      return new Error(
+        ("Invalid " + locationName + " `" + propName + "` of type `" + preciseType + "` ") +
+        ("supplied to `" + componentName + "`, expected `" + expectedType + "`.")
+      );
+    }
+    return null;
+  }
+  return createChainableTypeChecker(validate);
+}
+
+function createAnyTypeChecker() {
+  return createChainableTypeChecker(emptyFunction.thatReturns(null));
+}
+
+function createArrayOfTypeChecker(typeChecker) {
+  function validate(props, propName, componentName, location) {
+    var propValue = props[propName];
+    if (!Array.isArray(propValue)) {
+      var locationName = ReactPropTypeLocationNames[location];
+      var propType = getPropType(propValue);
+      return new Error(
+        ("Invalid " + locationName + " `" + propName + "` of type ") +
+        ("`" + propType + "` supplied to `" + componentName + "`, expected an array.")
+      );
+    }
+    for (var i = 0; i < propValue.length; i++) {
+      var error = typeChecker(propValue, i, componentName, location);
+      if (error instanceof Error) {
+        return error;
+      }
+    }
+    return null;
+  }
+  return createChainableTypeChecker(validate);
+}
+
+function createElementTypeChecker() {
+  function validate(props, propName, componentName, location) {
+    if (!ReactElement.isValidElement(props[propName])) {
+      var locationName = ReactPropTypeLocationNames[location];
+      return new Error(
+        ("Invalid " + locationName + " `" + propName + "` supplied to ") +
+        ("`" + componentName + "`, expected a ReactElement.")
+      );
+    }
+    return null;
+  }
+  return createChainableTypeChecker(validate);
+}
+
+function createInstanceTypeChecker(expectedClass) {
+  function validate(props, propName, componentName, location) {
+    if (!(props[propName] instanceof expectedClass)) {
+      var locationName = ReactPropTypeLocationNames[location];
+      var expectedClassName = expectedClass.name || ANONYMOUS;
+      return new Error(
+        ("Invalid " + locationName + " `" + propName + "` supplied to ") +
+        ("`" + componentName + "`, expected instance of `" + expectedClassName + "`.")
+      );
+    }
+    return null;
+  }
+  return createChainableTypeChecker(validate);
+}
+
+function createEnumTypeChecker(expectedValues) {
+  function validate(props, propName, componentName, location) {
+    var propValue = props[propName];
+    for (var i = 0; i < expectedValues.length; i++) {
+      if (propValue === expectedValues[i]) {
+        return null;
+      }
+    }
+
+    var locationName = ReactPropTypeLocationNames[location];
+    var valuesString = JSON.stringify(expectedValues);
+    return new Error(
+      ("Invalid " + locationName + " `" + propName + "` of value `" + propValue + "` ") +
+      ("supplied to `" + componentName + "`, expected one of " + valuesString + ".")
+    );
+  }
+  return createChainableTypeChecker(validate);
+}
+
+function createObjectOfTypeChecker(typeChecker) {
+  function validate(props, propName, componentName, location) {
+    var propValue = props[propName];
+    var propType = getPropType(propValue);
+    if (propType !== 'object') {
+      var locationName = ReactPropTypeLocationNames[location];
+      return new Error(
+        ("Invalid " + locationName + " `" + propName + "` of type ") +
+        ("`" + propType + "` supplied to `" + componentName + "`, expected an object.")
+      );
+    }
+    for (var key in propValue) {
+      if (propValue.hasOwnProperty(key)) {
+        var error = typeChecker(propValue, key, componentName, location);
+        if (error instanceof Error) {
+          return error;
+        }
+      }
+    }
+    return null;
+  }
+  return createChainableTypeChecker(validate);
+}
+
+function createUnionTypeChecker(arrayOfTypeCheckers) {
+  function validate(props, propName, componentName, location) {
+    for (var i = 0; i < arrayOfTypeCheckers.length; i++) {
+      var checker = arrayOfTypeCheckers[i];
+      if (checker(props, propName, componentName, location) == null) {
+        return null;
+      }
+    }
+
+    var locationName = ReactPropTypeLocationNames[location];
+    return new Error(
+      ("Invalid " + locationName + " `" + propName + "` supplied to ") +
+      ("`" + componentName + "`.")
+    );
+  }
+  return createChainableTypeChecker(validate);
+}
+
+function createNodeChecker() {
+  function validate(props, propName, componentName, location) {
+    if (!isNode(props[propName])) {
+      var locationName = ReactPropTypeLocationNames[location];
+      return new Error(
+        ("Invalid " + locationName + " `" + propName + "` supplied to ") +
+        ("`" + componentName + "`, expected a ReactNode.")
+      );
+    }
+    return null;
+  }
+  return createChainableTypeChecker(validate);
+}
+
+function createShapeTypeChecker(shapeTypes) {
+  function validate(props, propName, componentName, location) {
+    var propValue = props[propName];
+    var propType = getPropType(propValue);
+    if (propType !== 'object') {
+      var locationName = ReactPropTypeLocationNames[location];
+      return new Error(
+        ("Invalid " + locationName + " `" + propName + "` of type `" + propType + "` ") +
+        ("supplied to `" + componentName + "`, expected `object`.")
+      );
+    }
+    for (var key in shapeTypes) {
+      var checker = shapeTypes[key];
+      if (!checker) {
+        continue;
+      }
+      var error = checker(propValue, key, componentName, location);
+      if (error) {
+        return error;
+      }
+    }
+    return null;
+  }
+  return createChainableTypeChecker(validate);
+}
+
+function isNode(propValue) {
+  switch (typeof propValue) {
+    case 'number':
+    case 'string':
+    case 'undefined':
+      return true;
+    case 'boolean':
+      return !propValue;
+    case 'object':
+      if (Array.isArray(propValue)) {
+        return propValue.every(isNode);
+      }
+      if (propValue === null || ReactElement.isValidElement(propValue)) {
+        return true;
+      }
+      propValue = ReactFragment.extractIfFragment(propValue);
+      for (var k in propValue) {
+        if (!isNode(propValue[k])) {
+          return false;
+        }
+      }
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Equivalent of `typeof` but with special handling for array and regexp.
+function getPropType(propValue) {
+  var propType = typeof propValue;
+  if (Array.isArray(propValue)) {
+    return 'array';
+  }
+  if (propValue instanceof RegExp) {
+    // Old webkits (at least until Android 4.0) return 'function' rather than
+    // 'object' for typeof a RegExp. We'll normalize this here so that /bla/
+    // passes PropTypes.object.
+    return 'object';
+  }
+  return propType;
+}
+
+// This handles more types than `getPropType`. Only used for error messages.
+// See `createPrimitiveTypeChecker`.
+function getPreciseType(propValue) {
+  var propType = getPropType(propValue);
+  if (propType === 'object') {
+    if (propValue instanceof Date) {
+      return 'date';
+    } else if (propValue instanceof RegExp) {
+      return 'regexp';
+    }
+  }
+  return propType;
+}
+
+module.exports = ReactPropTypes;
+
+},{ "./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactFragment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactFragment.js","./ReactPropTypeLocationNames":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPropTypeLocationNames.js","./emptyFunction":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/emptyFunction.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/findDOMNode.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -37808,87 +37888,7 @@ function onlyChild(children) {
 
 module.exports = onlyChild;
 
-},{ "./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactServerRendering.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @typechecks static-only
- * @providesModule ReactServerRendering
- */
-'use strict';
-
-var ReactElement = require("./ReactElement");
-var ReactInstanceHandles = require("./ReactInstanceHandles");
-var ReactMarkupChecksum = require("./ReactMarkupChecksum");
-var ReactServerRenderingTransaction =
-  require("./ReactServerRenderingTransaction");
-
-var emptyObject = require("./emptyObject");
-var instantiateReactComponent = require("./instantiateReactComponent");
-var invariant = require("./invariant");
-
-/**
- * @param {ReactElement} element
- * @return {string} the HTML markup
- */
-function renderToString(element) {
-  ("production" !== process.env.NODE_ENV ? invariant(
-    ReactElement.isValidElement(element),
-    'renderToString(): You must pass a valid ReactElement.'
-  ) : invariant(ReactElement.isValidElement(element)));
-
-  var transaction;
-  try {
-    var id = ReactInstanceHandles.createReactRootID();
-    transaction = ReactServerRenderingTransaction.getPooled(false);
-
-    return transaction.perform(function() {
-      var componentInstance = instantiateReactComponent(element, null);
-      var markup =
-        componentInstance.mountComponent(id, transaction, emptyObject);
-      return ReactMarkupChecksum.addChecksumToMarkup(markup);
-    }, null);
-  } finally {
-    ReactServerRenderingTransaction.release(transaction);
-  }
-}
-
-/**
- * @param {ReactElement} element
- * @return {string} the HTML markup, without the extra React ID and checksum
- * (for generating static pages)
- */
-function renderToStaticMarkup(element) {
-  ("production" !== process.env.NODE_ENV ? invariant(
-    ReactElement.isValidElement(element),
-    'renderToStaticMarkup(): You must pass a valid ReactElement.'
-  ) : invariant(ReactElement.isValidElement(element)));
-
-  var transaction;
-  try {
-    var id = ReactInstanceHandles.createReactRootID();
-    transaction = ReactServerRenderingTransaction.getPooled(true);
-
-    return transaction.perform(function() {
-      var componentInstance = instantiateReactComponent(element, null);
-      return componentInstance.mountComponent(id, transaction, emptyObject);
-    }, null);
-  } finally {
-    ReactServerRenderingTransaction.release(transaction);
-  }
-}
-
-module.exports = {
-  renderToString: renderToString,
-  renderToStaticMarkup: renderToStaticMarkup
-};
-
-},{ "./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactInstanceHandles":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInstanceHandles.js","./ReactMarkupChecksum":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMarkupChecksum.js","./ReactServerRenderingTransaction":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactServerRenderingTransaction.js","./emptyObject":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/emptyObject.js","./instantiateReactComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/instantiateReactComponent.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js":[function(require,module,exports){
+},{ "./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -37974,6 +37974,32 @@ var ReactErrorUtils = {
 };
 
 module.exports = ReactErrorUtils;
+
+},{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPropTypeLocationNames.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactPropTypeLocationNames
+ */
+
+'use strict';
+
+var ReactPropTypeLocationNames = {};
+
+if ("production" !== process.env.NODE_ENV) {
+  ReactPropTypeLocationNames = {
+    prop: 'prop',
+    context: 'context',
+    childContext: 'child context'
+  };
+}
+
+module.exports = ReactPropTypeLocationNames;
 
 },{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInstanceMap.js":[function(require,module,exports){
 /**
@@ -38061,7 +38087,7 @@ var ReactLifeCycle = {
 
 module.exports = ReactLifeCycle;
 
-},{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPropTypeLocationNames.js":[function(require,module,exports){
+},{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/emptyObject.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -38070,22 +38096,18 @@ module.exports = ReactLifeCycle;
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
  *
- * @providesModule ReactPropTypeLocationNames
+ * @providesModule emptyObject
  */
 
-'use strict';
+"use strict";
 
-var ReactPropTypeLocationNames = {};
+var emptyObject = {};
 
 if ("production" !== process.env.NODE_ENV) {
-  ReactPropTypeLocationNames = {
-    prop: 'prop',
-    context: 'context',
-    childContext: 'child context'
-  };
+  Object.freeze(emptyObject);
 }
 
-module.exports = ReactPropTypeLocationNames;
+module.exports = emptyObject;
 
 },{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/keyOf.js":[function(require,module,exports){
 /**
@@ -38122,72 +38144,6 @@ var keyOf = function(oneKeyObj) {
 
 
 module.exports = keyOf;
-
-},{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getIteratorFn.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule getIteratorFn
- * @typechecks static-only
- */
-
-'use strict';
-
-/* global Symbol */
-var ITERATOR_SYMBOL = typeof Symbol === 'function' && Symbol.iterator;
-var FAUX_ITERATOR_SYMBOL = '@@iterator'; // Before Symbol spec.
-
-/**
- * Returns the iterator method function contained on the iterable object.
- *
- * Be sure to invoke the function with the iterable as context:
- *
- *     var iteratorFn = getIteratorFn(myIterable);
- *     if (iteratorFn) {
- *       var iterator = iteratorFn.call(myIterable);
- *       ...
- *     }
- *
- * @param {?object} maybeIterable
- * @return {?function}
- */
-function getIteratorFn(maybeIterable) {
-  var iteratorFn = maybeIterable && (
-    (ITERATOR_SYMBOL && maybeIterable[ITERATOR_SYMBOL] || maybeIterable[FAUX_ITERATOR_SYMBOL])
-  );
-  if (typeof iteratorFn === 'function') {
-    return iteratorFn;
-  }
-}
-
-module.exports = getIteratorFn;
-
-},{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/emptyObject.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule emptyObject
- */
-
-"use strict";
-
-var emptyObject = {};
-
-if ("production" !== process.env.NODE_ENV) {
-  Object.freeze(emptyObject);
-}
-
-module.exports = emptyObject;
 
 },{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/mapObject.js":[function(require,module,exports){
 /**
@@ -38241,6 +38197,81 @@ function mapObject(object, callback, context) {
 }
 
 module.exports = mapObject;
+
+},{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getIteratorFn.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule getIteratorFn
+ * @typechecks static-only
+ */
+
+'use strict';
+
+/* global Symbol */
+var ITERATOR_SYMBOL = typeof Symbol === 'function' && Symbol.iterator;
+var FAUX_ITERATOR_SYMBOL = '@@iterator'; // Before Symbol spec.
+
+/**
+ * Returns the iterator method function contained on the iterable object.
+ *
+ * Be sure to invoke the function with the iterable as context:
+ *
+ *     var iteratorFn = getIteratorFn(myIterable);
+ *     if (iteratorFn) {
+ *       var iterator = iteratorFn.call(myIterable);
+ *       ...
+ *     }
+ *
+ * @param {?object} maybeIterable
+ * @return {?function}
+ */
+function getIteratorFn(maybeIterable) {
+  var iteratorFn = maybeIterable && (
+    (ITERATOR_SYMBOL && maybeIterable[ITERATOR_SYMBOL] || maybeIterable[FAUX_ITERATOR_SYMBOL])
+  );
+  if (typeof iteratorFn === 'function') {
+    return iteratorFn;
+  }
+}
+
+module.exports = getIteratorFn;
+
+},{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactRootIndex.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactRootIndex
+ * @typechecks
+ */
+
+'use strict';
+
+var ReactRootIndexInjection = {
+  /**
+   * @param {function} _createReactRootIndex
+   */
+  injectCreateReactRootIndex: function(_createReactRootIndex) {
+    ReactRootIndex.createReactRootIndex = _createReactRootIndex;
+  }
+};
+
+var ReactRootIndex = {
+  createReactRootIndex: null,
+  injection: ReactRootIndexInjection
+};
+
+module.exports = ReactRootIndex;
 
 },{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/escapeTextContentForBrowser.js":[function(require,module,exports){
 /**
@@ -38338,71 +38369,6 @@ var ServerReactRootIndex = {
 
 module.exports = ServerReactRootIndex;
 
-},{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactRootIndex.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule ReactRootIndex
- * @typechecks
- */
-
-'use strict';
-
-var ReactRootIndexInjection = {
-  /**
-   * @param {function} _createReactRootIndex
-   */
-  injectCreateReactRootIndex: function(_createReactRootIndex) {
-    ReactRootIndex.createReactRootIndex = _createReactRootIndex;
-  }
-};
-
-var ReactRootIndex = {
-  createReactRootIndex: null,
-  injection: ReactRootIndexInjection
-};
-
-module.exports = ReactRootIndex;
-
-},{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/emptyFunction.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule emptyFunction
- */
-
-function makeEmptyFunction(arg) {
-  return function() {
-    return arg;
-  };
-}
-
-/**
- * This function accepts and discards inputs; it has no side effects. This is
- * primarily useful idiomatically for overridable function endpoints which
- * always need to be callable, since JS lacks a null-call idiom ala Cocoa.
- */
-function emptyFunction() {}
-
-emptyFunction.thatReturns = makeEmptyFunction;
-emptyFunction.thatReturnsFalse = makeEmptyFunction(false);
-emptyFunction.thatReturnsTrue = makeEmptyFunction(true);
-emptyFunction.thatReturnsNull = makeEmptyFunction(null);
-emptyFunction.thatReturnsThis = function() { return this; };
-emptyFunction.thatReturnsArgument = function(arg) { return arg; };
-
-module.exports = emptyFunction;
-
 },{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getReactRootElementInContainer.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
@@ -38438,6 +38404,40 @@ function getReactRootElementInContainer(container) {
 
 module.exports = getReactRootElementInContainer;
 
+},{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/emptyFunction.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule emptyFunction
+ */
+
+function makeEmptyFunction(arg) {
+  return function() {
+    return arg;
+  };
+}
+
+/**
+ * This function accepts and discards inputs; it has no side effects. This is
+ * primarily useful idiomatically for overridable function endpoints which
+ * always need to be callable, since JS lacks a null-call idiom ala Cocoa.
+ */
+function emptyFunction() {}
+
+emptyFunction.thatReturns = makeEmptyFunction;
+emptyFunction.thatReturnsFalse = makeEmptyFunction(false);
+emptyFunction.thatReturnsTrue = makeEmptyFunction(true);
+emptyFunction.thatReturnsNull = makeEmptyFunction(null);
+emptyFunction.thatReturnsThis = function() { return this; };
+emptyFunction.thatReturnsArgument = function(arg) { return arg; };
+
+module.exports = emptyFunction;
+
 },{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/isNode.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
@@ -38465,121 +38465,304 @@ function isNode(object) {
 
 module.exports = isNode;
 
-},{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/PooledClass.js":[function(require,module,exports){
+},{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdateQueue.js":[function(require,module,exports){
 /**
- * Copyright 2013-2015, Facebook, Inc.
+ * Copyright 2015, Facebook, Inc.
  * All rights reserved.
  *
  * This source code is licensed under the BSD-style license found in the
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
  *
- * @providesModule PooledClass
+ * @providesModule ReactUpdateQueue
  */
 
 'use strict';
 
+var ReactLifeCycle = require("./ReactLifeCycle");
+var ReactCurrentOwner = require("./ReactCurrentOwner");
+var ReactElement = require("./ReactElement");
+var ReactInstanceMap = require("./ReactInstanceMap");
+var ReactUpdates = require("./ReactUpdates");
+
+var assign = require("./Object.assign");
 var invariant = require("./invariant");
+var warning = require("./warning");
 
-/**
- * Static poolers. Several custom versions for each potential number of
- * arguments. A completely generic pooler is easy to implement, but would
- * require accessing the `arguments` object. In each of these, `this` refers to
- * the Class itself, not an instance. If any others are needed, simply add them
- * here, or in their own files.
- */
-var oneArgumentPooler = function(copyFieldsFrom) {
-  var Klass = this;
-  if (Klass.instancePool.length) {
-    var instance = Klass.instancePool.pop();
-    Klass.call(instance, copyFieldsFrom);
-    return instance;
-  } else {
-    return new Klass(copyFieldsFrom);
+function enqueueUpdate(internalInstance) {
+  if (internalInstance !== ReactLifeCycle.currentlyMountingInstance) {
+    // If we're in a componentWillMount handler, don't enqueue a rerender
+    // because ReactUpdates assumes we're in a browser context (which is
+    // wrong for server rendering) and we're about to do a render anyway.
+    // See bug in #1740.
+    ReactUpdates.enqueueUpdate(internalInstance);
   }
-};
+}
 
-var twoArgumentPooler = function(a1, a2) {
-  var Klass = this;
-  if (Klass.instancePool.length) {
-    var instance = Klass.instancePool.pop();
-    Klass.call(instance, a1, a2);
-    return instance;
-  } else {
-    return new Klass(a1, a2);
-  }
-};
-
-var threeArgumentPooler = function(a1, a2, a3) {
-  var Klass = this;
-  if (Klass.instancePool.length) {
-    var instance = Klass.instancePool.pop();
-    Klass.call(instance, a1, a2, a3);
-    return instance;
-  } else {
-    return new Klass(a1, a2, a3);
-  }
-};
-
-var fiveArgumentPooler = function(a1, a2, a3, a4, a5) {
-  var Klass = this;
-  if (Klass.instancePool.length) {
-    var instance = Klass.instancePool.pop();
-    Klass.call(instance, a1, a2, a3, a4, a5);
-    return instance;
-  } else {
-    return new Klass(a1, a2, a3, a4, a5);
-  }
-};
-
-var standardReleaser = function(instance) {
-  var Klass = this;
+function getInternalInstanceReadyForUpdate(publicInstance, callerName) {
   ("production" !== process.env.NODE_ENV ? invariant(
-    instance instanceof Klass,
-    'Trying to release an instance into a pool of a different type.'
-  ) : invariant(instance instanceof Klass));
-  if (instance.destructor) {
-    instance.destructor();
-  }
-  if (Klass.instancePool.length < Klass.poolSize) {
-    Klass.instancePool.push(instance);
-  }
-};
+    ReactCurrentOwner.current == null,
+    '%s(...): Cannot update during an existing state transition ' +
+    '(such as within `render`). Render methods should be a pure function ' +
+    'of props and state.',
+    callerName
+  ) : invariant(ReactCurrentOwner.current == null));
 
-var DEFAULT_POOL_SIZE = 10;
-var DEFAULT_POOLER = oneArgumentPooler;
+  var internalInstance = ReactInstanceMap.get(publicInstance);
+  if (!internalInstance) {
+    if ("production" !== process.env.NODE_ENV) {
+      // Only warn when we have a callerName. Otherwise we should be silent.
+      // We're probably calling from enqueueCallback. We don't want to warn
+      // there because we already warned for the corresponding lifecycle method.
+      ("production" !== process.env.NODE_ENV ? warning(
+        !callerName,
+        '%s(...): Can only update a mounted or mounting component. ' +
+        'This usually means you called %s() on an unmounted ' +
+        'component. This is a no-op.',
+        callerName,
+        callerName
+      ) : null);
+    }
+    return null;
+  }
+
+  if (internalInstance === ReactLifeCycle.currentlyUnmountingInstance) {
+    return null;
+  }
+
+  return internalInstance;
+}
 
 /**
- * Augments `CopyConstructor` to be a poolable class, augmenting only the class
- * itself (statically) not adding any prototypical fields. Any CopyConstructor
- * you give this may have a `poolSize` property, and will look for a
- * prototypical `destructor` on instances (optional).
- *
- * @param {Function} CopyConstructor Constructor that can be used to reset.
- * @param {Function} pooler Customizable pooler.
+ * ReactUpdateQueue allows for state updates to be scheduled into a later
+ * reconciliation step.
  */
-var addPoolingTo = function(CopyConstructor, pooler) {
-  var NewKlass = CopyConstructor;
-  NewKlass.instancePool = [];
-  NewKlass.getPooled = pooler || DEFAULT_POOLER;
-  if (!NewKlass.poolSize) {
-    NewKlass.poolSize = DEFAULT_POOL_SIZE;
+var ReactUpdateQueue = {
+
+  /**
+   * Enqueue a callback that will be executed after all the pending updates
+   * have processed.
+   *
+   * @param {ReactClass} publicInstance The instance to use as `this` context.
+   * @param {?function} callback Called after state is updated.
+   * @internal
+   */
+  enqueueCallback: function(publicInstance, callback) {
+    ("production" !== process.env.NODE_ENV ? invariant(
+      typeof callback === 'function',
+      'enqueueCallback(...): You called `setProps`, `replaceProps`, ' +
+      '`setState`, `replaceState`, or `forceUpdate` with a callback that ' +
+      'isn\'t callable.'
+    ) : invariant(typeof callback === 'function'));
+    var internalInstance = getInternalInstanceReadyForUpdate(publicInstance);
+
+    // Previously we would throw an error if we didn't have an internal
+    // instance. Since we want to make it a no-op instead, we mirror the same
+    // behavior we have in other enqueue* methods.
+    // We also need to ignore callbacks in componentWillMount. See
+    // enqueueUpdates.
+    if (!internalInstance ||
+        internalInstance === ReactLifeCycle.currentlyMountingInstance) {
+      return null;
+    }
+
+    if (internalInstance._pendingCallbacks) {
+      internalInstance._pendingCallbacks.push(callback);
+    } else {
+      internalInstance._pendingCallbacks = [callback];
+    }
+    // TODO: The callback here is ignored when setState is called from
+    // componentWillMount. Either fix it or disallow doing so completely in
+    // favor of getInitialState. Alternatively, we can disallow
+    // componentWillMount during server-side rendering.
+    enqueueUpdate(internalInstance);
+  },
+
+  enqueueCallbackInternal: function(internalInstance, callback) {
+    ("production" !== process.env.NODE_ENV ? invariant(
+      typeof callback === 'function',
+      'enqueueCallback(...): You called `setProps`, `replaceProps`, ' +
+      '`setState`, `replaceState`, or `forceUpdate` with a callback that ' +
+      'isn\'t callable.'
+    ) : invariant(typeof callback === 'function'));
+    if (internalInstance._pendingCallbacks) {
+      internalInstance._pendingCallbacks.push(callback);
+    } else {
+      internalInstance._pendingCallbacks = [callback];
+    }
+    enqueueUpdate(internalInstance);
+  },
+
+  /**
+   * Forces an update. This should only be invoked when it is known with
+   * certainty that we are **not** in a DOM transaction.
+   *
+   * You may want to call this when you know that some deeper aspect of the
+   * component's state has changed but `setState` was not called.
+   *
+   * This will not invoke `shouldUpdateComponent`, but it will invoke
+   * `componentWillUpdate` and `componentDidUpdate`.
+   *
+   * @param {ReactClass} publicInstance The instance that should rerender.
+   * @internal
+   */
+  enqueueForceUpdate: function(publicInstance) {
+    var internalInstance = getInternalInstanceReadyForUpdate(
+      publicInstance,
+      'forceUpdate'
+    );
+
+    if (!internalInstance) {
+      return;
+    }
+
+    internalInstance._pendingForceUpdate = true;
+
+    enqueueUpdate(internalInstance);
+  },
+
+  /**
+   * Replaces all of the state. Always use this or `setState` to mutate state.
+   * You should treat `this.state` as immutable.
+   *
+   * There is no guarantee that `this.state` will be immediately updated, so
+   * accessing `this.state` after calling this method may return the old value.
+   *
+   * @param {ReactClass} publicInstance The instance that should rerender.
+   * @param {object} completeState Next state.
+   * @internal
+   */
+  enqueueReplaceState: function(publicInstance, completeState) {
+    var internalInstance = getInternalInstanceReadyForUpdate(
+      publicInstance,
+      'replaceState'
+    );
+
+    if (!internalInstance) {
+      return;
+    }
+
+    internalInstance._pendingStateQueue = [completeState];
+    internalInstance._pendingReplaceState = true;
+
+    enqueueUpdate(internalInstance);
+  },
+
+  /**
+   * Sets a subset of the state. This only exists because _pendingState is
+   * internal. This provides a merging strategy that is not available to deep
+   * properties which is confusing. TODO: Expose pendingState or don't use it
+   * during the merge.
+   *
+   * @param {ReactClass} publicInstance The instance that should rerender.
+   * @param {object} partialState Next partial state to be merged with state.
+   * @internal
+   */
+  enqueueSetState: function(publicInstance, partialState) {
+    var internalInstance = getInternalInstanceReadyForUpdate(
+      publicInstance,
+      'setState'
+    );
+
+    if (!internalInstance) {
+      return;
+    }
+
+    var queue =
+      internalInstance._pendingStateQueue ||
+      (internalInstance._pendingStateQueue = []);
+    queue.push(partialState);
+
+    enqueueUpdate(internalInstance);
+  },
+
+  /**
+   * Sets a subset of the props.
+   *
+   * @param {ReactClass} publicInstance The instance that should rerender.
+   * @param {object} partialProps Subset of the next props.
+   * @internal
+   */
+  enqueueSetProps: function(publicInstance, partialProps) {
+    var internalInstance = getInternalInstanceReadyForUpdate(
+      publicInstance,
+      'setProps'
+    );
+
+    if (!internalInstance) {
+      return;
+    }
+
+    ("production" !== process.env.NODE_ENV ? invariant(
+      internalInstance._isTopLevel,
+      'setProps(...): You called `setProps` on a ' +
+      'component with a parent. This is an anti-pattern since props will ' +
+      'get reactively updated when rendered. Instead, change the owner\'s ' +
+      '`render` method to pass the correct value as props to the component ' +
+      'where it is created.'
+    ) : invariant(internalInstance._isTopLevel));
+
+    // Merge with the pending element if it exists, otherwise with existing
+    // element props.
+    var element = internalInstance._pendingElement ||
+                  internalInstance._currentElement;
+    var props = assign({}, element.props, partialProps);
+    internalInstance._pendingElement = ReactElement.cloneAndReplaceProps(
+      element,
+      props
+    );
+
+    enqueueUpdate(internalInstance);
+  },
+
+  /**
+   * Replaces all of the props.
+   *
+   * @param {ReactClass} publicInstance The instance that should rerender.
+   * @param {object} props New props.
+   * @internal
+   */
+  enqueueReplaceProps: function(publicInstance, props) {
+    var internalInstance = getInternalInstanceReadyForUpdate(
+      publicInstance,
+      'replaceProps'
+    );
+
+    if (!internalInstance) {
+      return;
+    }
+
+    ("production" !== process.env.NODE_ENV ? invariant(
+      internalInstance._isTopLevel,
+      'replaceProps(...): You called `replaceProps` on a ' +
+      'component with a parent. This is an anti-pattern since props will ' +
+      'get reactively updated when rendered. Instead, change the owner\'s ' +
+      '`render` method to pass the correct value as props to the component ' +
+      'where it is created.'
+    ) : invariant(internalInstance._isTopLevel));
+
+    // Merge with the pending element if it exists, otherwise with existing
+    // element props.
+    var element = internalInstance._pendingElement ||
+                  internalInstance._currentElement;
+    internalInstance._pendingElement = ReactElement.cloneAndReplaceProps(
+      element,
+      props
+    );
+
+    enqueueUpdate(internalInstance);
+  },
+
+  enqueueElementInternal: function(internalInstance, newElement) {
+    internalInstance._pendingElement = newElement;
+    enqueueUpdate(internalInstance);
   }
-  NewKlass.release = standardReleaser;
-  return NewKlass;
+
 };
 
-var PooledClass = {
-  addPoolingTo: addPoolingTo,
-  oneArgumentPooler: oneArgumentPooler,
-  twoArgumentPooler: twoArgumentPooler,
-  threeArgumentPooler: threeArgumentPooler,
-  fiveArgumentPooler: fiveArgumentPooler
-};
+module.exports = ReactUpdateQueue;
 
-module.exports = PooledClass;
-
-},{ "./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactFragment.js":[function(require,module,exports){
+},{ "./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./ReactCurrentOwner":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactCurrentOwner.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactInstanceMap":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInstanceMap.js","./ReactLifeCycle":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactLifeCycle.js","./ReactUpdates":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdates.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactFragment.js":[function(require,module,exports){
 /**
  * Copyright 2015, Facebook, Inc.
  * All rights reserved.
@@ -38823,7 +39006,121 @@ if ("production" !== process.env.NODE_ENV) {
 
 module.exports = warning;
 
-},{ "./emptyFunction":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/emptyFunction.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventConstants.js":[function(require,module,exports){
+},{ "./emptyFunction":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/emptyFunction.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/PooledClass.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule PooledClass
+ */
+
+'use strict';
+
+var invariant = require("./invariant");
+
+/**
+ * Static poolers. Several custom versions for each potential number of
+ * arguments. A completely generic pooler is easy to implement, but would
+ * require accessing the `arguments` object. In each of these, `this` refers to
+ * the Class itself, not an instance. If any others are needed, simply add them
+ * here, or in their own files.
+ */
+var oneArgumentPooler = function(copyFieldsFrom) {
+  var Klass = this;
+  if (Klass.instancePool.length) {
+    var instance = Klass.instancePool.pop();
+    Klass.call(instance, copyFieldsFrom);
+    return instance;
+  } else {
+    return new Klass(copyFieldsFrom);
+  }
+};
+
+var twoArgumentPooler = function(a1, a2) {
+  var Klass = this;
+  if (Klass.instancePool.length) {
+    var instance = Klass.instancePool.pop();
+    Klass.call(instance, a1, a2);
+    return instance;
+  } else {
+    return new Klass(a1, a2);
+  }
+};
+
+var threeArgumentPooler = function(a1, a2, a3) {
+  var Klass = this;
+  if (Klass.instancePool.length) {
+    var instance = Klass.instancePool.pop();
+    Klass.call(instance, a1, a2, a3);
+    return instance;
+  } else {
+    return new Klass(a1, a2, a3);
+  }
+};
+
+var fiveArgumentPooler = function(a1, a2, a3, a4, a5) {
+  var Klass = this;
+  if (Klass.instancePool.length) {
+    var instance = Klass.instancePool.pop();
+    Klass.call(instance, a1, a2, a3, a4, a5);
+    return instance;
+  } else {
+    return new Klass(a1, a2, a3, a4, a5);
+  }
+};
+
+var standardReleaser = function(instance) {
+  var Klass = this;
+  ("production" !== process.env.NODE_ENV ? invariant(
+    instance instanceof Klass,
+    'Trying to release an instance into a pool of a different type.'
+  ) : invariant(instance instanceof Klass));
+  if (instance.destructor) {
+    instance.destructor();
+  }
+  if (Klass.instancePool.length < Klass.poolSize) {
+    Klass.instancePool.push(instance);
+  }
+};
+
+var DEFAULT_POOL_SIZE = 10;
+var DEFAULT_POOLER = oneArgumentPooler;
+
+/**
+ * Augments `CopyConstructor` to be a poolable class, augmenting only the class
+ * itself (statically) not adding any prototypical fields. Any CopyConstructor
+ * you give this may have a `poolSize` property, and will look for a
+ * prototypical `destructor` on instances (optional).
+ *
+ * @param {Function} CopyConstructor Constructor that can be used to reset.
+ * @param {Function} pooler Customizable pooler.
+ */
+var addPoolingTo = function(CopyConstructor, pooler) {
+  var NewKlass = CopyConstructor;
+  NewKlass.instancePool = [];
+  NewKlass.getPooled = pooler || DEFAULT_POOLER;
+  if (!NewKlass.poolSize) {
+    NewKlass.poolSize = DEFAULT_POOL_SIZE;
+  }
+  NewKlass.release = standardReleaser;
+  return NewKlass;
+};
+
+var PooledClass = {
+  addPoolingTo: addPoolingTo,
+  oneArgumentPooler: oneArgumentPooler,
+  twoArgumentPooler: twoArgumentPooler,
+  threeArgumentPooler: threeArgumentPooler,
+  fiveArgumentPooler: fiveArgumentPooler
+};
+
+module.exports = PooledClass;
+
+},{ "./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventConstants.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -39146,304 +39443,7 @@ function traverseAllChildren(children, callback, traverseContext) {
 
 module.exports = traverseAllChildren;
 
-},{ "./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactFragment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactFragment.js","./ReactInstanceHandles":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInstanceHandles.js","./getIteratorFn":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getIteratorFn.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdateQueue.js":[function(require,module,exports){
-/**
- * Copyright 2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule ReactUpdateQueue
- */
-
-'use strict';
-
-var ReactLifeCycle = require("./ReactLifeCycle");
-var ReactCurrentOwner = require("./ReactCurrentOwner");
-var ReactElement = require("./ReactElement");
-var ReactInstanceMap = require("./ReactInstanceMap");
-var ReactUpdates = require("./ReactUpdates");
-
-var assign = require("./Object.assign");
-var invariant = require("./invariant");
-var warning = require("./warning");
-
-function enqueueUpdate(internalInstance) {
-  if (internalInstance !== ReactLifeCycle.currentlyMountingInstance) {
-    // If we're in a componentWillMount handler, don't enqueue a rerender
-    // because ReactUpdates assumes we're in a browser context (which is
-    // wrong for server rendering) and we're about to do a render anyway.
-    // See bug in #1740.
-    ReactUpdates.enqueueUpdate(internalInstance);
-  }
-}
-
-function getInternalInstanceReadyForUpdate(publicInstance, callerName) {
-  ("production" !== process.env.NODE_ENV ? invariant(
-    ReactCurrentOwner.current == null,
-    '%s(...): Cannot update during an existing state transition ' +
-    '(such as within `render`). Render methods should be a pure function ' +
-    'of props and state.',
-    callerName
-  ) : invariant(ReactCurrentOwner.current == null));
-
-  var internalInstance = ReactInstanceMap.get(publicInstance);
-  if (!internalInstance) {
-    if ("production" !== process.env.NODE_ENV) {
-      // Only warn when we have a callerName. Otherwise we should be silent.
-      // We're probably calling from enqueueCallback. We don't want to warn
-      // there because we already warned for the corresponding lifecycle method.
-      ("production" !== process.env.NODE_ENV ? warning(
-        !callerName,
-        '%s(...): Can only update a mounted or mounting component. ' +
-        'This usually means you called %s() on an unmounted ' +
-        'component. This is a no-op.',
-        callerName,
-        callerName
-      ) : null);
-    }
-    return null;
-  }
-
-  if (internalInstance === ReactLifeCycle.currentlyUnmountingInstance) {
-    return null;
-  }
-
-  return internalInstance;
-}
-
-/**
- * ReactUpdateQueue allows for state updates to be scheduled into a later
- * reconciliation step.
- */
-var ReactUpdateQueue = {
-
-  /**
-   * Enqueue a callback that will be executed after all the pending updates
-   * have processed.
-   *
-   * @param {ReactClass} publicInstance The instance to use as `this` context.
-   * @param {?function} callback Called after state is updated.
-   * @internal
-   */
-  enqueueCallback: function(publicInstance, callback) {
-    ("production" !== process.env.NODE_ENV ? invariant(
-      typeof callback === 'function',
-      'enqueueCallback(...): You called `setProps`, `replaceProps`, ' +
-      '`setState`, `replaceState`, or `forceUpdate` with a callback that ' +
-      'isn\'t callable.'
-    ) : invariant(typeof callback === 'function'));
-    var internalInstance = getInternalInstanceReadyForUpdate(publicInstance);
-
-    // Previously we would throw an error if we didn't have an internal
-    // instance. Since we want to make it a no-op instead, we mirror the same
-    // behavior we have in other enqueue* methods.
-    // We also need to ignore callbacks in componentWillMount. See
-    // enqueueUpdates.
-    if (!internalInstance ||
-        internalInstance === ReactLifeCycle.currentlyMountingInstance) {
-      return null;
-    }
-
-    if (internalInstance._pendingCallbacks) {
-      internalInstance._pendingCallbacks.push(callback);
-    } else {
-      internalInstance._pendingCallbacks = [callback];
-    }
-    // TODO: The callback here is ignored when setState is called from
-    // componentWillMount. Either fix it or disallow doing so completely in
-    // favor of getInitialState. Alternatively, we can disallow
-    // componentWillMount during server-side rendering.
-    enqueueUpdate(internalInstance);
-  },
-
-  enqueueCallbackInternal: function(internalInstance, callback) {
-    ("production" !== process.env.NODE_ENV ? invariant(
-      typeof callback === 'function',
-      'enqueueCallback(...): You called `setProps`, `replaceProps`, ' +
-      '`setState`, `replaceState`, or `forceUpdate` with a callback that ' +
-      'isn\'t callable.'
-    ) : invariant(typeof callback === 'function'));
-    if (internalInstance._pendingCallbacks) {
-      internalInstance._pendingCallbacks.push(callback);
-    } else {
-      internalInstance._pendingCallbacks = [callback];
-    }
-    enqueueUpdate(internalInstance);
-  },
-
-  /**
-   * Forces an update. This should only be invoked when it is known with
-   * certainty that we are **not** in a DOM transaction.
-   *
-   * You may want to call this when you know that some deeper aspect of the
-   * component's state has changed but `setState` was not called.
-   *
-   * This will not invoke `shouldUpdateComponent`, but it will invoke
-   * `componentWillUpdate` and `componentDidUpdate`.
-   *
-   * @param {ReactClass} publicInstance The instance that should rerender.
-   * @internal
-   */
-  enqueueForceUpdate: function(publicInstance) {
-    var internalInstance = getInternalInstanceReadyForUpdate(
-      publicInstance,
-      'forceUpdate'
-    );
-
-    if (!internalInstance) {
-      return;
-    }
-
-    internalInstance._pendingForceUpdate = true;
-
-    enqueueUpdate(internalInstance);
-  },
-
-  /**
-   * Replaces all of the state. Always use this or `setState` to mutate state.
-   * You should treat `this.state` as immutable.
-   *
-   * There is no guarantee that `this.state` will be immediately updated, so
-   * accessing `this.state` after calling this method may return the old value.
-   *
-   * @param {ReactClass} publicInstance The instance that should rerender.
-   * @param {object} completeState Next state.
-   * @internal
-   */
-  enqueueReplaceState: function(publicInstance, completeState) {
-    var internalInstance = getInternalInstanceReadyForUpdate(
-      publicInstance,
-      'replaceState'
-    );
-
-    if (!internalInstance) {
-      return;
-    }
-
-    internalInstance._pendingStateQueue = [completeState];
-    internalInstance._pendingReplaceState = true;
-
-    enqueueUpdate(internalInstance);
-  },
-
-  /**
-   * Sets a subset of the state. This only exists because _pendingState is
-   * internal. This provides a merging strategy that is not available to deep
-   * properties which is confusing. TODO: Expose pendingState or don't use it
-   * during the merge.
-   *
-   * @param {ReactClass} publicInstance The instance that should rerender.
-   * @param {object} partialState Next partial state to be merged with state.
-   * @internal
-   */
-  enqueueSetState: function(publicInstance, partialState) {
-    var internalInstance = getInternalInstanceReadyForUpdate(
-      publicInstance,
-      'setState'
-    );
-
-    if (!internalInstance) {
-      return;
-    }
-
-    var queue =
-      internalInstance._pendingStateQueue ||
-      (internalInstance._pendingStateQueue = []);
-    queue.push(partialState);
-
-    enqueueUpdate(internalInstance);
-  },
-
-  /**
-   * Sets a subset of the props.
-   *
-   * @param {ReactClass} publicInstance The instance that should rerender.
-   * @param {object} partialProps Subset of the next props.
-   * @internal
-   */
-  enqueueSetProps: function(publicInstance, partialProps) {
-    var internalInstance = getInternalInstanceReadyForUpdate(
-      publicInstance,
-      'setProps'
-    );
-
-    if (!internalInstance) {
-      return;
-    }
-
-    ("production" !== process.env.NODE_ENV ? invariant(
-      internalInstance._isTopLevel,
-      'setProps(...): You called `setProps` on a ' +
-      'component with a parent. This is an anti-pattern since props will ' +
-      'get reactively updated when rendered. Instead, change the owner\'s ' +
-      '`render` method to pass the correct value as props to the component ' +
-      'where it is created.'
-    ) : invariant(internalInstance._isTopLevel));
-
-    // Merge with the pending element if it exists, otherwise with existing
-    // element props.
-    var element = internalInstance._pendingElement ||
-                  internalInstance._currentElement;
-    var props = assign({}, element.props, partialProps);
-    internalInstance._pendingElement = ReactElement.cloneAndReplaceProps(
-      element,
-      props
-    );
-
-    enqueueUpdate(internalInstance);
-  },
-
-  /**
-   * Replaces all of the props.
-   *
-   * @param {ReactClass} publicInstance The instance that should rerender.
-   * @param {object} props New props.
-   * @internal
-   */
-  enqueueReplaceProps: function(publicInstance, props) {
-    var internalInstance = getInternalInstanceReadyForUpdate(
-      publicInstance,
-      'replaceProps'
-    );
-
-    if (!internalInstance) {
-      return;
-    }
-
-    ("production" !== process.env.NODE_ENV ? invariant(
-      internalInstance._isTopLevel,
-      'replaceProps(...): You called `replaceProps` on a ' +
-      'component with a parent. This is an anti-pattern since props will ' +
-      'get reactively updated when rendered. Instead, change the owner\'s ' +
-      '`render` method to pass the correct value as props to the component ' +
-      'where it is created.'
-    ) : invariant(internalInstance._isTopLevel));
-
-    // Merge with the pending element if it exists, otherwise with existing
-    // element props.
-    var element = internalInstance._pendingElement ||
-                  internalInstance._currentElement;
-    internalInstance._pendingElement = ReactElement.cloneAndReplaceProps(
-      element,
-      props
-    );
-
-    enqueueUpdate(internalInstance);
-  },
-
-  enqueueElementInternal: function(internalInstance, newElement) {
-    internalInstance._pendingElement = newElement;
-    enqueueUpdate(internalInstance);
-  }
-
-};
-
-module.exports = ReactUpdateQueue;
-
-},{ "./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./ReactCurrentOwner":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactCurrentOwner.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactInstanceMap":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInstanceMap.js","./ReactLifeCycle":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactLifeCycle.js","./ReactUpdates":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdates.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPropTypeLocations.js":[function(require,module,exports){
+},{ "./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactFragment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactFragment.js","./ReactInstanceHandles":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInstanceHandles.js","./getIteratorFn":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getIteratorFn.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPropTypeLocations.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -39672,7 +39672,197 @@ var ReactComponentBrowserEnvironment = {
 
 module.exports = ReactComponentBrowserEnvironment;
 
-},{ "./ReactDOMIDOperations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMIDOperations.js","./ReactMount":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMount.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMComponent.js":[function(require,module,exports){
+},{ "./ReactDOMIDOperations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMIDOperations.js","./ReactMount":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMount.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMPropertyOperations.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule DOMPropertyOperations
+ * @typechecks static-only
+ */
+
+'use strict';
+
+var DOMProperty = require("./DOMProperty");
+
+var quoteAttributeValueForBrowser = require("./quoteAttributeValueForBrowser");
+var warning = require("./warning");
+
+function shouldIgnoreValue(name, value) {
+  return value == null ||
+    (DOMProperty.hasBooleanValue[name] && !value) ||
+    (DOMProperty.hasNumericValue[name] && isNaN(value)) ||
+    (DOMProperty.hasPositiveNumericValue[name] && (value < 1)) ||
+    (DOMProperty.hasOverloadedBooleanValue[name] && value === false);
+}
+
+if ("production" !== process.env.NODE_ENV) {
+  var reactProps = {
+    children: true,
+    dangerouslySetInnerHTML: true,
+    key: true,
+    ref: true
+  };
+  var warnedProperties = {};
+
+  var warnUnknownProperty = function(name) {
+    if (reactProps.hasOwnProperty(name) && reactProps[name] ||
+        warnedProperties.hasOwnProperty(name) && warnedProperties[name]) {
+      return;
+    }
+
+    warnedProperties[name] = true;
+    var lowerCasedName = name.toLowerCase();
+
+    // data-* attributes should be lowercase; suggest the lowercase version
+    var standardName = (
+      DOMProperty.isCustomAttribute(lowerCasedName) ?
+        lowerCasedName :
+      DOMProperty.getPossibleStandardName.hasOwnProperty(lowerCasedName) ?
+        DOMProperty.getPossibleStandardName[lowerCasedName] :
+        null
+    );
+
+    // For now, only warn when we have a suggested correction. This prevents
+    // logging too much when using transferPropsTo.
+    ("production" !== process.env.NODE_ENV ? warning(
+      standardName == null,
+      'Unknown DOM property %s. Did you mean %s?',
+      name,
+      standardName
+    ) : null);
+
+  };
+}
+
+/**
+ * Operations for dealing with DOM properties.
+ */
+var DOMPropertyOperations = {
+
+  /**
+   * Creates markup for the ID property.
+   *
+   * @param {string} id Unescaped ID.
+   * @return {string} Markup string.
+   */
+  createMarkupForID: function(id) {
+    return DOMProperty.ID_ATTRIBUTE_NAME + '=' +
+      quoteAttributeValueForBrowser(id);
+  },
+
+  /**
+   * Creates markup for a property.
+   *
+   * @param {string} name
+   * @param {*} value
+   * @return {?string} Markup string, or null if the property was invalid.
+   */
+  createMarkupForProperty: function(name, value) {
+    if (DOMProperty.isStandardName.hasOwnProperty(name) &&
+        DOMProperty.isStandardName[name]) {
+      if (shouldIgnoreValue(name, value)) {
+        return '';
+      }
+      var attributeName = DOMProperty.getAttributeName[name];
+      if (DOMProperty.hasBooleanValue[name] ||
+          (DOMProperty.hasOverloadedBooleanValue[name] && value === true)) {
+        return attributeName;
+      }
+      return attributeName + '=' + quoteAttributeValueForBrowser(value);
+    } else if (DOMProperty.isCustomAttribute(name)) {
+      if (value == null) {
+        return '';
+      }
+      return name + '=' + quoteAttributeValueForBrowser(value);
+    } else if ("production" !== process.env.NODE_ENV) {
+      warnUnknownProperty(name);
+    }
+    return null;
+  },
+
+  /**
+   * Sets the value for a property on a node.
+   *
+   * @param {DOMElement} node
+   * @param {string} name
+   * @param {*} value
+   */
+  setValueForProperty: function(node, name, value) {
+    if (DOMProperty.isStandardName.hasOwnProperty(name) &&
+        DOMProperty.isStandardName[name]) {
+      var mutationMethod = DOMProperty.getMutationMethod[name];
+      if (mutationMethod) {
+        mutationMethod(node, value);
+      } else if (shouldIgnoreValue(name, value)) {
+        this.deleteValueForProperty(node, name);
+      } else if (DOMProperty.mustUseAttribute[name]) {
+        // `setAttribute` with objects becomes only `[object]` in IE8/9,
+        // ('' + value) makes it output the correct toString()-value.
+        node.setAttribute(DOMProperty.getAttributeName[name], '' + value);
+      } else {
+        var propName = DOMProperty.getPropertyName[name];
+        // Must explicitly cast values for HAS_SIDE_EFFECTS-properties to the
+        // property type before comparing; only `value` does and is string.
+        if (!DOMProperty.hasSideEffects[name] ||
+            ('' + node[propName]) !== ('' + value)) {
+          // Contrary to `setAttribute`, object properties are properly
+          // `toString`ed by IE8/9.
+          node[propName] = value;
+        }
+      }
+    } else if (DOMProperty.isCustomAttribute(name)) {
+      if (value == null) {
+        node.removeAttribute(name);
+      } else {
+        node.setAttribute(name, '' + value);
+      }
+    } else if ("production" !== process.env.NODE_ENV) {
+      warnUnknownProperty(name);
+    }
+  },
+
+  /**
+   * Deletes the value for a property on a node.
+   *
+   * @param {DOMElement} node
+   * @param {string} name
+   */
+  deleteValueForProperty: function(node, name) {
+    if (DOMProperty.isStandardName.hasOwnProperty(name) &&
+        DOMProperty.isStandardName[name]) {
+      var mutationMethod = DOMProperty.getMutationMethod[name];
+      if (mutationMethod) {
+        mutationMethod(node, undefined);
+      } else if (DOMProperty.mustUseAttribute[name]) {
+        node.removeAttribute(DOMProperty.getAttributeName[name]);
+      } else {
+        var propName = DOMProperty.getPropertyName[name];
+        var defaultValue = DOMProperty.getDefaultValueForProperty(
+          node.nodeName,
+          propName
+        );
+        if (!DOMProperty.hasSideEffects[name] ||
+            ('' + node[propName]) !== defaultValue) {
+          node[propName] = defaultValue;
+        }
+      }
+    } else if (DOMProperty.isCustomAttribute(name)) {
+      node.removeAttribute(name);
+    } else if ("production" !== process.env.NODE_ENV) {
+      warnUnknownProperty(name);
+    }
+  }
+
+};
+
+module.exports = DOMPropertyOperations;
+
+},{ "./DOMProperty":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMProperty.js","./quoteAttributeValueForBrowser":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/quoteAttributeValueForBrowser.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMComponent.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -40180,7 +40370,7 @@ ReactDOMComponent.injection = {
 
 module.exports = ReactDOMComponent;
 
-},{ "./CSSPropertyOperations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/CSSPropertyOperations.js","./DOMProperty":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMProperty.js","./DOMPropertyOperations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMPropertyOperations.js","./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./ReactBrowserEventEmitter":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserEventEmitter.js","./ReactComponentBrowserEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactComponentBrowserEnvironment.js","./ReactMount":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMount.js","./ReactMultiChild":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMultiChild.js","./ReactPerf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPerf.js","./escapeTextContentForBrowser":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/escapeTextContentForBrowser.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./isEventSupported":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/isEventSupported.js","./keyOf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/keyOf.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMPropertyOperations.js":[function(require,module,exports){
+},{ "./CSSPropertyOperations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/CSSPropertyOperations.js","./DOMProperty":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMProperty.js","./DOMPropertyOperations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMPropertyOperations.js","./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./ReactBrowserEventEmitter":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserEventEmitter.js","./ReactComponentBrowserEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactComponentBrowserEnvironment.js","./ReactMount":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMount.js","./ReactMultiChild":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMultiChild.js","./ReactPerf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPerf.js","./escapeTextContentForBrowser":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/escapeTextContentForBrowser.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./isEventSupported":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/isEventSupported.js","./keyOf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/keyOf.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DefaultEventPluginOrder.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -40189,570 +40379,37 @@ module.exports = ReactDOMComponent;
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
  *
- * @providesModule DOMPropertyOperations
- * @typechecks static-only
+ * @providesModule DefaultEventPluginOrder
  */
 
 'use strict';
 
-var DOMProperty = require("./DOMProperty");
-
-var quoteAttributeValueForBrowser = require("./quoteAttributeValueForBrowser");
-var warning = require("./warning");
-
-function shouldIgnoreValue(name, value) {
-  return value == null ||
-    (DOMProperty.hasBooleanValue[name] && !value) ||
-    (DOMProperty.hasNumericValue[name] && isNaN(value)) ||
-    (DOMProperty.hasPositiveNumericValue[name] && (value < 1)) ||
-    (DOMProperty.hasOverloadedBooleanValue[name] && value === false);
-}
-
-if ("production" !== process.env.NODE_ENV) {
-  var reactProps = {
-    children: true,
-    dangerouslySetInnerHTML: true,
-    key: true,
-    ref: true
-  };
-  var warnedProperties = {};
-
-  var warnUnknownProperty = function(name) {
-    if (reactProps.hasOwnProperty(name) && reactProps[name] ||
-        warnedProperties.hasOwnProperty(name) && warnedProperties[name]) {
-      return;
-    }
-
-    warnedProperties[name] = true;
-    var lowerCasedName = name.toLowerCase();
-
-    // data-* attributes should be lowercase; suggest the lowercase version
-    var standardName = (
-      DOMProperty.isCustomAttribute(lowerCasedName) ?
-        lowerCasedName :
-      DOMProperty.getPossibleStandardName.hasOwnProperty(lowerCasedName) ?
-        DOMProperty.getPossibleStandardName[lowerCasedName] :
-        null
-    );
-
-    // For now, only warn when we have a suggested correction. This prevents
-    // logging too much when using transferPropsTo.
-    ("production" !== process.env.NODE_ENV ? warning(
-      standardName == null,
-      'Unknown DOM property %s. Did you mean %s?',
-      name,
-      standardName
-    ) : null);
-
-  };
-}
-
-/**
- * Operations for dealing with DOM properties.
- */
-var DOMPropertyOperations = {
-
-  /**
-   * Creates markup for the ID property.
-   *
-   * @param {string} id Unescaped ID.
-   * @return {string} Markup string.
-   */
-  createMarkupForID: function(id) {
-    return DOMProperty.ID_ATTRIBUTE_NAME + '=' +
-      quoteAttributeValueForBrowser(id);
-  },
-
-  /**
-   * Creates markup for a property.
-   *
-   * @param {string} name
-   * @param {*} value
-   * @return {?string} Markup string, or null if the property was invalid.
-   */
-  createMarkupForProperty: function(name, value) {
-    if (DOMProperty.isStandardName.hasOwnProperty(name) &&
-        DOMProperty.isStandardName[name]) {
-      if (shouldIgnoreValue(name, value)) {
-        return '';
-      }
-      var attributeName = DOMProperty.getAttributeName[name];
-      if (DOMProperty.hasBooleanValue[name] ||
-          (DOMProperty.hasOverloadedBooleanValue[name] && value === true)) {
-        return attributeName;
-      }
-      return attributeName + '=' + quoteAttributeValueForBrowser(value);
-    } else if (DOMProperty.isCustomAttribute(name)) {
-      if (value == null) {
-        return '';
-      }
-      return name + '=' + quoteAttributeValueForBrowser(value);
-    } else if ("production" !== process.env.NODE_ENV) {
-      warnUnknownProperty(name);
-    }
-    return null;
-  },
-
-  /**
-   * Sets the value for a property on a node.
-   *
-   * @param {DOMElement} node
-   * @param {string} name
-   * @param {*} value
-   */
-  setValueForProperty: function(node, name, value) {
-    if (DOMProperty.isStandardName.hasOwnProperty(name) &&
-        DOMProperty.isStandardName[name]) {
-      var mutationMethod = DOMProperty.getMutationMethod[name];
-      if (mutationMethod) {
-        mutationMethod(node, value);
-      } else if (shouldIgnoreValue(name, value)) {
-        this.deleteValueForProperty(node, name);
-      } else if (DOMProperty.mustUseAttribute[name]) {
-        // `setAttribute` with objects becomes only `[object]` in IE8/9,
-        // ('' + value) makes it output the correct toString()-value.
-        node.setAttribute(DOMProperty.getAttributeName[name], '' + value);
-      } else {
-        var propName = DOMProperty.getPropertyName[name];
-        // Must explicitly cast values for HAS_SIDE_EFFECTS-properties to the
-        // property type before comparing; only `value` does and is string.
-        if (!DOMProperty.hasSideEffects[name] ||
-            ('' + node[propName]) !== ('' + value)) {
-          // Contrary to `setAttribute`, object properties are properly
-          // `toString`ed by IE8/9.
-          node[propName] = value;
-        }
-      }
-    } else if (DOMProperty.isCustomAttribute(name)) {
-      if (value == null) {
-        node.removeAttribute(name);
-      } else {
-        node.setAttribute(name, '' + value);
-      }
-    } else if ("production" !== process.env.NODE_ENV) {
-      warnUnknownProperty(name);
-    }
-  },
-
-  /**
-   * Deletes the value for a property on a node.
-   *
-   * @param {DOMElement} node
-   * @param {string} name
-   */
-  deleteValueForProperty: function(node, name) {
-    if (DOMProperty.isStandardName.hasOwnProperty(name) &&
-        DOMProperty.isStandardName[name]) {
-      var mutationMethod = DOMProperty.getMutationMethod[name];
-      if (mutationMethod) {
-        mutationMethod(node, undefined);
-      } else if (DOMProperty.mustUseAttribute[name]) {
-        node.removeAttribute(DOMProperty.getAttributeName[name]);
-      } else {
-        var propName = DOMProperty.getPropertyName[name];
-        var defaultValue = DOMProperty.getDefaultValueForProperty(
-          node.nodeName,
-          propName
-        );
-        if (!DOMProperty.hasSideEffects[name] ||
-            ('' + node[propName]) !== defaultValue) {
-          node[propName] = defaultValue;
-        }
-      }
-    } else if (DOMProperty.isCustomAttribute(name)) {
-      node.removeAttribute(name);
-    } else if ("production" !== process.env.NODE_ENV) {
-      warnUnknownProperty(name);
-    }
-  }
-
-};
-
-module.exports = DOMPropertyOperations;
-
-},{ "./DOMProperty":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMProperty.js","./quoteAttributeValueForBrowser":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/quoteAttributeValueForBrowser.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ChangeEventPlugin.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule ChangeEventPlugin
- */
-
-'use strict';
-
-var EventConstants = require("./EventConstants");
-var EventPluginHub = require("./EventPluginHub");
-var EventPropagators = require("./EventPropagators");
-var ExecutionEnvironment = require("./ExecutionEnvironment");
-var ReactUpdates = require("./ReactUpdates");
-var SyntheticEvent = require("./SyntheticEvent");
-
-var isEventSupported = require("./isEventSupported");
-var isTextInputElement = require("./isTextInputElement");
 var keyOf = require("./keyOf");
 
-var topLevelTypes = EventConstants.topLevelTypes;
-
-var eventTypes = {
-  change: {
-    phasedRegistrationNames: {
-      bubbled: keyOf({onChange: null}),
-      captured: keyOf({onChangeCapture: null})
-    },
-    dependencies: [
-      topLevelTypes.topBlur,
-      topLevelTypes.topChange,
-      topLevelTypes.topClick,
-      topLevelTypes.topFocus,
-      topLevelTypes.topInput,
-      topLevelTypes.topKeyDown,
-      topLevelTypes.topKeyUp,
-      topLevelTypes.topSelectionChange
-    ]
-  }
-};
-
 /**
- * For IE shims
+ * Module that is injectable into `EventPluginHub`, that specifies a
+ * deterministic ordering of `EventPlugin`s. A convenient way to reason about
+ * plugins, without having to package every one of them. This is better than
+ * having plugins be ordered in the same order that they are injected because
+ * that ordering would be influenced by the packaging order.
+ * `ResponderEventPlugin` must occur before `SimpleEventPlugin` so that
+ * preventing default on events is convenient in `SimpleEventPlugin` handlers.
  */
-var activeElement = null;
-var activeElementID = null;
-var activeElementValue = null;
-var activeElementValueProp = null;
+var DefaultEventPluginOrder = [
+  keyOf({ResponderEventPlugin: null}),
+  keyOf({SimpleEventPlugin: null}),
+  keyOf({TapEventPlugin: null}),
+  keyOf({EnterLeaveEventPlugin: null}),
+  keyOf({ChangeEventPlugin: null}),
+  keyOf({SelectEventPlugin: null}),
+  keyOf({BeforeInputEventPlugin: null}),
+  keyOf({AnalyticsEventPlugin: null}),
+  keyOf({MobileSafariClickEventPlugin: null})
+];
 
-/**
- * SECTION: handle `change` event
- */
-function shouldUseChangeEvent(elem) {
-  return (
-    elem.nodeName === 'SELECT' ||
-    (elem.nodeName === 'INPUT' && elem.type === 'file')
-  );
-}
+module.exports = DefaultEventPluginOrder;
 
-var doesChangeEventBubble = false;
-if (ExecutionEnvironment.canUseDOM) {
-  // See `handleChange` comment below
-  doesChangeEventBubble = isEventSupported('change') && (
-    (!('documentMode' in document) || document.documentMode > 8)
-  );
-}
-
-function manualDispatchChangeEvent(nativeEvent) {
-  var event = SyntheticEvent.getPooled(
-    eventTypes.change,
-    activeElementID,
-    nativeEvent
-  );
-  EventPropagators.accumulateTwoPhaseDispatches(event);
-
-  // If change and propertychange bubbled, we'd just bind to it like all the
-  // other events and have it go through ReactBrowserEventEmitter. Since it
-  // doesn't, we manually listen for the events and so we have to enqueue and
-  // process the abstract event manually.
-  //
-  // Batching is necessary here in order to ensure that all event handlers run
-  // before the next rerender (including event handlers attached to ancestor
-  // elements instead of directly on the input). Without this, controlled
-  // components don't work properly in conjunction with event bubbling because
-  // the component is rerendered and the value reverted before all the event
-  // handlers can run. See https://github.com/facebook/react/issues/708.
-  ReactUpdates.batchedUpdates(runEventInBatch, event);
-}
-
-function runEventInBatch(event) {
-  EventPluginHub.enqueueEvents(event);
-  EventPluginHub.processEventQueue();
-}
-
-function startWatchingForChangeEventIE8(target, targetID) {
-  activeElement = target;
-  activeElementID = targetID;
-  activeElement.attachEvent('onchange', manualDispatchChangeEvent);
-}
-
-function stopWatchingForChangeEventIE8() {
-  if (!activeElement) {
-    return;
-  }
-  activeElement.detachEvent('onchange', manualDispatchChangeEvent);
-  activeElement = null;
-  activeElementID = null;
-}
-
-function getTargetIDForChangeEvent(
-    topLevelType,
-    topLevelTarget,
-    topLevelTargetID) {
-  if (topLevelType === topLevelTypes.topChange) {
-    return topLevelTargetID;
-  }
-}
-function handleEventsForChangeEventIE8(
-    topLevelType,
-    topLevelTarget,
-    topLevelTargetID) {
-  if (topLevelType === topLevelTypes.topFocus) {
-    // stopWatching() should be a noop here but we call it just in case we
-    // missed a blur event somehow.
-    stopWatchingForChangeEventIE8();
-    startWatchingForChangeEventIE8(topLevelTarget, topLevelTargetID);
-  } else if (topLevelType === topLevelTypes.topBlur) {
-    stopWatchingForChangeEventIE8();
-  }
-}
-
-
-/**
- * SECTION: handle `input` event
- */
-var isInputEventSupported = false;
-if (ExecutionEnvironment.canUseDOM) {
-  // IE9 claims to support the input event but fails to trigger it when
-  // deleting text, so we ignore its input events
-  isInputEventSupported = isEventSupported('input') && (
-    (!('documentMode' in document) || document.documentMode > 9)
-  );
-}
-
-/**
- * (For old IE.) Replacement getter/setter for the `value` property that gets
- * set on the active element.
- */
-var newValueProp =  {
-  get: function() {
-    return activeElementValueProp.get.call(this);
-  },
-  set: function(val) {
-    // Cast to a string so we can do equality checks.
-    activeElementValue = '' + val;
-    activeElementValueProp.set.call(this, val);
-  }
-};
-
-/**
- * (For old IE.) Starts tracking propertychange events on the passed-in element
- * and override the value property so that we can distinguish user events from
- * value changes in JS.
- */
-function startWatchingForValueChange(target, targetID) {
-  activeElement = target;
-  activeElementID = targetID;
-  activeElementValue = target.value;
-  activeElementValueProp = Object.getOwnPropertyDescriptor(
-    target.constructor.prototype,
-    'value'
-  );
-
-  Object.defineProperty(activeElement, 'value', newValueProp);
-  activeElement.attachEvent('onpropertychange', handlePropertyChange);
-}
-
-/**
- * (For old IE.) Removes the event listeners from the currently-tracked element,
- * if any exists.
- */
-function stopWatchingForValueChange() {
-  if (!activeElement) {
-    return;
-  }
-
-  // delete restores the original property definition
-  delete activeElement.value;
-  activeElement.detachEvent('onpropertychange', handlePropertyChange);
-
-  activeElement = null;
-  activeElementID = null;
-  activeElementValue = null;
-  activeElementValueProp = null;
-}
-
-/**
- * (For old IE.) Handles a propertychange event, sending a `change` event if
- * the value of the active element has changed.
- */
-function handlePropertyChange(nativeEvent) {
-  if (nativeEvent.propertyName !== 'value') {
-    return;
-  }
-  var value = nativeEvent.srcElement.value;
-  if (value === activeElementValue) {
-    return;
-  }
-  activeElementValue = value;
-
-  manualDispatchChangeEvent(nativeEvent);
-}
-
-/**
- * If a `change` event should be fired, returns the target's ID.
- */
-function getTargetIDForInputEvent(
-    topLevelType,
-    topLevelTarget,
-    topLevelTargetID) {
-  if (topLevelType === topLevelTypes.topInput) {
-    // In modern browsers (i.e., not IE8 or IE9), the input event is exactly
-    // what we want so fall through here and trigger an abstract event
-    return topLevelTargetID;
-  }
-}
-
-// For IE8 and IE9.
-function handleEventsForInputEventIE(
-    topLevelType,
-    topLevelTarget,
-    topLevelTargetID) {
-  if (topLevelType === topLevelTypes.topFocus) {
-    // In IE8, we can capture almost all .value changes by adding a
-    // propertychange handler and looking for events with propertyName
-    // equal to 'value'
-    // In IE9, propertychange fires for most input events but is buggy and
-    // doesn't fire when text is deleted, but conveniently, selectionchange
-    // appears to fire in all of the remaining cases so we catch those and
-    // forward the event if the value has changed
-    // In either case, we don't want to call the event handler if the value
-    // is changed from JS so we redefine a setter for `.value` that updates
-    // our activeElementValue variable, allowing us to ignore those changes
-    //
-    // stopWatching() should be a noop here but we call it just in case we
-    // missed a blur event somehow.
-    stopWatchingForValueChange();
-    startWatchingForValueChange(topLevelTarget, topLevelTargetID);
-  } else if (topLevelType === topLevelTypes.topBlur) {
-    stopWatchingForValueChange();
-  }
-}
-
-// For IE8 and IE9.
-function getTargetIDForInputEventIE(
-    topLevelType,
-    topLevelTarget,
-    topLevelTargetID) {
-  if (topLevelType === topLevelTypes.topSelectionChange ||
-      topLevelType === topLevelTypes.topKeyUp ||
-      topLevelType === topLevelTypes.topKeyDown) {
-    // On the selectionchange event, the target is just document which isn't
-    // helpful for us so just check activeElement instead.
-    //
-    // 99% of the time, keydown and keyup aren't necessary. IE8 fails to fire
-    // propertychange on the first input event after setting `value` from a
-    // script and fires only keydown, keypress, keyup. Catching keyup usually
-    // gets it and catching keydown lets us fire an event for the first
-    // keystroke if user does a key repeat (it'll be a little delayed: right
-    // before the second keystroke). Other input methods (e.g., paste) seem to
-    // fire selectionchange normally.
-    if (activeElement && activeElement.value !== activeElementValue) {
-      activeElementValue = activeElement.value;
-      return activeElementID;
-    }
-  }
-}
-
-
-/**
- * SECTION: handle `click` event
- */
-function shouldUseClickEvent(elem) {
-  // Use the `click` event to detect changes to checkbox and radio inputs.
-  // This approach works across all browsers, whereas `change` does not fire
-  // until `blur` in IE8.
-  return (
-    elem.nodeName === 'INPUT' &&
-    (elem.type === 'checkbox' || elem.type === 'radio')
-  );
-}
-
-function getTargetIDForClickEvent(
-    topLevelType,
-    topLevelTarget,
-    topLevelTargetID) {
-  if (topLevelType === topLevelTypes.topClick) {
-    return topLevelTargetID;
-  }
-}
-
-/**
- * This plugin creates an `onChange` event that normalizes change events
- * across form elements. This event fires at a time when it's possible to
- * change the element's value without seeing a flicker.
- *
- * Supported elements are:
- * - input (see `isTextInputElement`)
- * - textarea
- * - select
- */
-var ChangeEventPlugin = {
-
-  eventTypes: eventTypes,
-
-  /**
-   * @param {string} topLevelType Record from `EventConstants`.
-   * @param {DOMEventTarget} topLevelTarget The listening component root node.
-   * @param {string} topLevelTargetID ID of `topLevelTarget`.
-   * @param {object} nativeEvent Native browser event.
-   * @return {*} An accumulation of synthetic events.
-   * @see {EventPluginHub.extractEvents}
-   */
-  extractEvents: function(
-      topLevelType,
-      topLevelTarget,
-      topLevelTargetID,
-      nativeEvent) {
-
-    var getTargetIDFunc, handleEventFunc;
-    if (shouldUseChangeEvent(topLevelTarget)) {
-      if (doesChangeEventBubble) {
-        getTargetIDFunc = getTargetIDForChangeEvent;
-      } else {
-        handleEventFunc = handleEventsForChangeEventIE8;
-      }
-    } else if (isTextInputElement(topLevelTarget)) {
-      if (isInputEventSupported) {
-        getTargetIDFunc = getTargetIDForInputEvent;
-      } else {
-        getTargetIDFunc = getTargetIDForInputEventIE;
-        handleEventFunc = handleEventsForInputEventIE;
-      }
-    } else if (shouldUseClickEvent(topLevelTarget)) {
-      getTargetIDFunc = getTargetIDForClickEvent;
-    }
-
-    if (getTargetIDFunc) {
-      var targetID = getTargetIDFunc(
-        topLevelType,
-        topLevelTarget,
-        topLevelTargetID
-      );
-      if (targetID) {
-        var event = SyntheticEvent.getPooled(
-          eventTypes.change,
-          targetID,
-          nativeEvent
-        );
-        EventPropagators.accumulateTwoPhaseDispatches(event);
-        return event;
-      }
-    }
-
-    if (handleEventFunc) {
-      handleEventFunc(
-        topLevelType,
-        topLevelTarget,
-        topLevelTargetID
-      );
-    }
-  }
-
-};
-
-module.exports = ChangeEventPlugin;
-
-},{ "./EventConstants":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventConstants.js","./EventPluginHub":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPluginHub.js","./EventPropagators":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPropagators.js","./ExecutionEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ExecutionEnvironment.js","./ReactUpdates":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdates.js","./SyntheticEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticEvent.js","./isEventSupported":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/isEventSupported.js","./isTextInputElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/isTextInputElement.js","./keyOf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/keyOf.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/BeforeInputEventPlugin.js":[function(require,module,exports){
+},{ "./keyOf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/keyOf.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/BeforeInputEventPlugin.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015 Facebook, Inc.
  * All rights reserved.
@@ -41247,7 +40904,7 @@ var BeforeInputEventPlugin = {
 
 module.exports = BeforeInputEventPlugin;
 
-},{ "./EventConstants":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventConstants.js","./EventPropagators":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPropagators.js","./ExecutionEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ExecutionEnvironment.js","./FallbackCompositionState":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/FallbackCompositionState.js","./SyntheticCompositionEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticCompositionEvent.js","./SyntheticInputEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticInputEvent.js","./keyOf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/keyOf.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DefaultEventPluginOrder.js":[function(require,module,exports){
+},{ "./EventConstants":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventConstants.js","./EventPropagators":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPropagators.js","./ExecutionEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ExecutionEnvironment.js","./FallbackCompositionState":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/FallbackCompositionState.js","./SyntheticCompositionEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticCompositionEvent.js","./SyntheticInputEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticInputEvent.js","./keyOf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/keyOf.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ChangeEventPlugin.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -41256,99 +40913,316 @@ module.exports = BeforeInputEventPlugin;
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
  *
- * @providesModule DefaultEventPluginOrder
- */
-
-'use strict';
-
-var keyOf = require("./keyOf");
-
-/**
- * Module that is injectable into `EventPluginHub`, that specifies a
- * deterministic ordering of `EventPlugin`s. A convenient way to reason about
- * plugins, without having to package every one of them. This is better than
- * having plugins be ordered in the same order that they are injected because
- * that ordering would be influenced by the packaging order.
- * `ResponderEventPlugin` must occur before `SimpleEventPlugin` so that
- * preventing default on events is convenient in `SimpleEventPlugin` handlers.
- */
-var DefaultEventPluginOrder = [
-  keyOf({ResponderEventPlugin: null}),
-  keyOf({SimpleEventPlugin: null}),
-  keyOf({TapEventPlugin: null}),
-  keyOf({EnterLeaveEventPlugin: null}),
-  keyOf({ChangeEventPlugin: null}),
-  keyOf({SelectEventPlugin: null}),
-  keyOf({BeforeInputEventPlugin: null}),
-  keyOf({AnalyticsEventPlugin: null}),
-  keyOf({MobileSafariClickEventPlugin: null})
-];
-
-module.exports = DefaultEventPluginOrder;
-
-},{ "./keyOf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/keyOf.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserComponentMixin.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule ReactBrowserComponentMixin
- */
-
-'use strict';
-
-var findDOMNode = require("./findDOMNode");
-
-var ReactBrowserComponentMixin = {
-  /**
-   * Returns the DOM node rendered by this component.
-   *
-   * @return {DOMElement} The root node of this component.
-   * @final
-   * @protected
-   */
-  getDOMNode: function() {
-    return findDOMNode(this);
-  }
-};
-
-module.exports = ReactBrowserComponentMixin;
-
-},{ "./findDOMNode":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/findDOMNode.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/MobileSafariClickEventPlugin.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule MobileSafariClickEventPlugin
- * @typechecks static-only
+ * @providesModule ChangeEventPlugin
  */
 
 'use strict';
 
 var EventConstants = require("./EventConstants");
+var EventPluginHub = require("./EventPluginHub");
+var EventPropagators = require("./EventPropagators");
+var ExecutionEnvironment = require("./ExecutionEnvironment");
+var ReactUpdates = require("./ReactUpdates");
+var SyntheticEvent = require("./SyntheticEvent");
 
-var emptyFunction = require("./emptyFunction");
+var isEventSupported = require("./isEventSupported");
+var isTextInputElement = require("./isTextInputElement");
+var keyOf = require("./keyOf");
 
 var topLevelTypes = EventConstants.topLevelTypes;
 
-/**
- * Mobile Safari does not fire properly bubble click events on non-interactive
- * elements, which means delegated click listeners do not fire. The workaround
- * for this bug involves attaching an empty click listener on the target node.
- *
- * This particular plugin works around the bug by attaching an empty click
- * listener on `touchstart` (which does fire on every element).
- */
-var MobileSafariClickEventPlugin = {
+var eventTypes = {
+  change: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({onChange: null}),
+      captured: keyOf({onChangeCapture: null})
+    },
+    dependencies: [
+      topLevelTypes.topBlur,
+      topLevelTypes.topChange,
+      topLevelTypes.topClick,
+      topLevelTypes.topFocus,
+      topLevelTypes.topInput,
+      topLevelTypes.topKeyDown,
+      topLevelTypes.topKeyUp,
+      topLevelTypes.topSelectionChange
+    ]
+  }
+};
 
-  eventTypes: null,
+/**
+ * For IE shims
+ */
+var activeElement = null;
+var activeElementID = null;
+var activeElementValue = null;
+var activeElementValueProp = null;
+
+/**
+ * SECTION: handle `change` event
+ */
+function shouldUseChangeEvent(elem) {
+  return (
+    elem.nodeName === 'SELECT' ||
+    (elem.nodeName === 'INPUT' && elem.type === 'file')
+  );
+}
+
+var doesChangeEventBubble = false;
+if (ExecutionEnvironment.canUseDOM) {
+  // See `handleChange` comment below
+  doesChangeEventBubble = isEventSupported('change') && (
+    (!('documentMode' in document) || document.documentMode > 8)
+  );
+}
+
+function manualDispatchChangeEvent(nativeEvent) {
+  var event = SyntheticEvent.getPooled(
+    eventTypes.change,
+    activeElementID,
+    nativeEvent
+  );
+  EventPropagators.accumulateTwoPhaseDispatches(event);
+
+  // If change and propertychange bubbled, we'd just bind to it like all the
+  // other events and have it go through ReactBrowserEventEmitter. Since it
+  // doesn't, we manually listen for the events and so we have to enqueue and
+  // process the abstract event manually.
+  //
+  // Batching is necessary here in order to ensure that all event handlers run
+  // before the next rerender (including event handlers attached to ancestor
+  // elements instead of directly on the input). Without this, controlled
+  // components don't work properly in conjunction with event bubbling because
+  // the component is rerendered and the value reverted before all the event
+  // handlers can run. See https://github.com/facebook/react/issues/708.
+  ReactUpdates.batchedUpdates(runEventInBatch, event);
+}
+
+function runEventInBatch(event) {
+  EventPluginHub.enqueueEvents(event);
+  EventPluginHub.processEventQueue();
+}
+
+function startWatchingForChangeEventIE8(target, targetID) {
+  activeElement = target;
+  activeElementID = targetID;
+  activeElement.attachEvent('onchange', manualDispatchChangeEvent);
+}
+
+function stopWatchingForChangeEventIE8() {
+  if (!activeElement) {
+    return;
+  }
+  activeElement.detachEvent('onchange', manualDispatchChangeEvent);
+  activeElement = null;
+  activeElementID = null;
+}
+
+function getTargetIDForChangeEvent(
+    topLevelType,
+    topLevelTarget,
+    topLevelTargetID) {
+  if (topLevelType === topLevelTypes.topChange) {
+    return topLevelTargetID;
+  }
+}
+function handleEventsForChangeEventIE8(
+    topLevelType,
+    topLevelTarget,
+    topLevelTargetID) {
+  if (topLevelType === topLevelTypes.topFocus) {
+    // stopWatching() should be a noop here but we call it just in case we
+    // missed a blur event somehow.
+    stopWatchingForChangeEventIE8();
+    startWatchingForChangeEventIE8(topLevelTarget, topLevelTargetID);
+  } else if (topLevelType === topLevelTypes.topBlur) {
+    stopWatchingForChangeEventIE8();
+  }
+}
+
+
+/**
+ * SECTION: handle `input` event
+ */
+var isInputEventSupported = false;
+if (ExecutionEnvironment.canUseDOM) {
+  // IE9 claims to support the input event but fails to trigger it when
+  // deleting text, so we ignore its input events
+  isInputEventSupported = isEventSupported('input') && (
+    (!('documentMode' in document) || document.documentMode > 9)
+  );
+}
+
+/**
+ * (For old IE.) Replacement getter/setter for the `value` property that gets
+ * set on the active element.
+ */
+var newValueProp =  {
+  get: function() {
+    return activeElementValueProp.get.call(this);
+  },
+  set: function(val) {
+    // Cast to a string so we can do equality checks.
+    activeElementValue = '' + val;
+    activeElementValueProp.set.call(this, val);
+  }
+};
+
+/**
+ * (For old IE.) Starts tracking propertychange events on the passed-in element
+ * and override the value property so that we can distinguish user events from
+ * value changes in JS.
+ */
+function startWatchingForValueChange(target, targetID) {
+  activeElement = target;
+  activeElementID = targetID;
+  activeElementValue = target.value;
+  activeElementValueProp = Object.getOwnPropertyDescriptor(
+    target.constructor.prototype,
+    'value'
+  );
+
+  Object.defineProperty(activeElement, 'value', newValueProp);
+  activeElement.attachEvent('onpropertychange', handlePropertyChange);
+}
+
+/**
+ * (For old IE.) Removes the event listeners from the currently-tracked element,
+ * if any exists.
+ */
+function stopWatchingForValueChange() {
+  if (!activeElement) {
+    return;
+  }
+
+  // delete restores the original property definition
+  delete activeElement.value;
+  activeElement.detachEvent('onpropertychange', handlePropertyChange);
+
+  activeElement = null;
+  activeElementID = null;
+  activeElementValue = null;
+  activeElementValueProp = null;
+}
+
+/**
+ * (For old IE.) Handles a propertychange event, sending a `change` event if
+ * the value of the active element has changed.
+ */
+function handlePropertyChange(nativeEvent) {
+  if (nativeEvent.propertyName !== 'value') {
+    return;
+  }
+  var value = nativeEvent.srcElement.value;
+  if (value === activeElementValue) {
+    return;
+  }
+  activeElementValue = value;
+
+  manualDispatchChangeEvent(nativeEvent);
+}
+
+/**
+ * If a `change` event should be fired, returns the target's ID.
+ */
+function getTargetIDForInputEvent(
+    topLevelType,
+    topLevelTarget,
+    topLevelTargetID) {
+  if (topLevelType === topLevelTypes.topInput) {
+    // In modern browsers (i.e., not IE8 or IE9), the input event is exactly
+    // what we want so fall through here and trigger an abstract event
+    return topLevelTargetID;
+  }
+}
+
+// For IE8 and IE9.
+function handleEventsForInputEventIE(
+    topLevelType,
+    topLevelTarget,
+    topLevelTargetID) {
+  if (topLevelType === topLevelTypes.topFocus) {
+    // In IE8, we can capture almost all .value changes by adding a
+    // propertychange handler and looking for events with propertyName
+    // equal to 'value'
+    // In IE9, propertychange fires for most input events but is buggy and
+    // doesn't fire when text is deleted, but conveniently, selectionchange
+    // appears to fire in all of the remaining cases so we catch those and
+    // forward the event if the value has changed
+    // In either case, we don't want to call the event handler if the value
+    // is changed from JS so we redefine a setter for `.value` that updates
+    // our activeElementValue variable, allowing us to ignore those changes
+    //
+    // stopWatching() should be a noop here but we call it just in case we
+    // missed a blur event somehow.
+    stopWatchingForValueChange();
+    startWatchingForValueChange(topLevelTarget, topLevelTargetID);
+  } else if (topLevelType === topLevelTypes.topBlur) {
+    stopWatchingForValueChange();
+  }
+}
+
+// For IE8 and IE9.
+function getTargetIDForInputEventIE(
+    topLevelType,
+    topLevelTarget,
+    topLevelTargetID) {
+  if (topLevelType === topLevelTypes.topSelectionChange ||
+      topLevelType === topLevelTypes.topKeyUp ||
+      topLevelType === topLevelTypes.topKeyDown) {
+    // On the selectionchange event, the target is just document which isn't
+    // helpful for us so just check activeElement instead.
+    //
+    // 99% of the time, keydown and keyup aren't necessary. IE8 fails to fire
+    // propertychange on the first input event after setting `value` from a
+    // script and fires only keydown, keypress, keyup. Catching keyup usually
+    // gets it and catching keydown lets us fire an event for the first
+    // keystroke if user does a key repeat (it'll be a little delayed: right
+    // before the second keystroke). Other input methods (e.g., paste) seem to
+    // fire selectionchange normally.
+    if (activeElement && activeElement.value !== activeElementValue) {
+      activeElementValue = activeElement.value;
+      return activeElementID;
+    }
+  }
+}
+
+
+/**
+ * SECTION: handle `click` event
+ */
+function shouldUseClickEvent(elem) {
+  // Use the `click` event to detect changes to checkbox and radio inputs.
+  // This approach works across all browsers, whereas `change` does not fire
+  // until `blur` in IE8.
+  return (
+    elem.nodeName === 'INPUT' &&
+    (elem.type === 'checkbox' || elem.type === 'radio')
+  );
+}
+
+function getTargetIDForClickEvent(
+    topLevelType,
+    topLevelTarget,
+    topLevelTargetID) {
+  if (topLevelType === topLevelTypes.topClick) {
+    return topLevelTargetID;
+  }
+}
+
+/**
+ * This plugin creates an `onChange` event that normalizes change events
+ * across form elements. This event fires at a time when it's possible to
+ * change the element's value without seeing a flicker.
+ *
+ * Supported elements are:
+ * - input (see `isTextInputElement`)
+ * - textarea
+ * - select
+ */
+var ChangeEventPlugin = {
+
+  eventTypes: eventTypes,
 
   /**
    * @param {string} topLevelType Record from `EventConstants`.
@@ -41363,19 +41237,56 @@ var MobileSafariClickEventPlugin = {
       topLevelTarget,
       topLevelTargetID,
       nativeEvent) {
-    if (topLevelType === topLevelTypes.topTouchStart) {
-      var target = nativeEvent.target;
-      if (target && !target.onclick) {
-        target.onclick = emptyFunction;
+
+    var getTargetIDFunc, handleEventFunc;
+    if (shouldUseChangeEvent(topLevelTarget)) {
+      if (doesChangeEventBubble) {
+        getTargetIDFunc = getTargetIDForChangeEvent;
+      } else {
+        handleEventFunc = handleEventsForChangeEventIE8;
       }
+    } else if (isTextInputElement(topLevelTarget)) {
+      if (isInputEventSupported) {
+        getTargetIDFunc = getTargetIDForInputEvent;
+      } else {
+        getTargetIDFunc = getTargetIDForInputEventIE;
+        handleEventFunc = handleEventsForInputEventIE;
+      }
+    } else if (shouldUseClickEvent(topLevelTarget)) {
+      getTargetIDFunc = getTargetIDForClickEvent;
+    }
+
+    if (getTargetIDFunc) {
+      var targetID = getTargetIDFunc(
+        topLevelType,
+        topLevelTarget,
+        topLevelTargetID
+      );
+      if (targetID) {
+        var event = SyntheticEvent.getPooled(
+          eventTypes.change,
+          targetID,
+          nativeEvent
+        );
+        EventPropagators.accumulateTwoPhaseDispatches(event);
+        return event;
+      }
+    }
+
+    if (handleEventFunc) {
+      handleEventFunc(
+        topLevelType,
+        topLevelTarget,
+        topLevelTargetID
+      );
     }
   }
 
 };
 
-module.exports = MobileSafariClickEventPlugin;
+module.exports = ChangeEventPlugin;
 
-},{ "./EventConstants":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventConstants.js","./emptyFunction":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/emptyFunction.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EnterLeaveEventPlugin.js":[function(require,module,exports){
+},{ "./EventConstants":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventConstants.js","./EventPluginHub":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPluginHub.js","./EventPropagators":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPropagators.js","./ExecutionEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ExecutionEnvironment.js","./ReactUpdates":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdates.js","./SyntheticEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticEvent.js","./isEventSupported":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/isEventSupported.js","./isTextInputElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/isTextInputElement.js","./keyOf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/keyOf.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EnterLeaveEventPlugin.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -41515,7 +41426,96 @@ var EnterLeaveEventPlugin = {
 
 module.exports = EnterLeaveEventPlugin;
 
-},{ "./EventConstants":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventConstants.js","./EventPropagators":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPropagators.js","./ReactMount":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMount.js","./SyntheticMouseEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticMouseEvent.js","./keyOf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/keyOf.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/HTMLDOMPropertyConfig.js":[function(require,module,exports){
+},{ "./EventConstants":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventConstants.js","./EventPropagators":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPropagators.js","./ReactMount":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMount.js","./SyntheticMouseEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticMouseEvent.js","./keyOf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/keyOf.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/MobileSafariClickEventPlugin.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule MobileSafariClickEventPlugin
+ * @typechecks static-only
+ */
+
+'use strict';
+
+var EventConstants = require("./EventConstants");
+
+var emptyFunction = require("./emptyFunction");
+
+var topLevelTypes = EventConstants.topLevelTypes;
+
+/**
+ * Mobile Safari does not fire properly bubble click events on non-interactive
+ * elements, which means delegated click listeners do not fire. The workaround
+ * for this bug involves attaching an empty click listener on the target node.
+ *
+ * This particular plugin works around the bug by attaching an empty click
+ * listener on `touchstart` (which does fire on every element).
+ */
+var MobileSafariClickEventPlugin = {
+
+  eventTypes: null,
+
+  /**
+   * @param {string} topLevelType Record from `EventConstants`.
+   * @param {DOMEventTarget} topLevelTarget The listening component root node.
+   * @param {string} topLevelTargetID ID of `topLevelTarget`.
+   * @param {object} nativeEvent Native browser event.
+   * @return {*} An accumulation of synthetic events.
+   * @see {EventPluginHub.extractEvents}
+   */
+  extractEvents: function(
+      topLevelType,
+      topLevelTarget,
+      topLevelTargetID,
+      nativeEvent) {
+    if (topLevelType === topLevelTypes.topTouchStart) {
+      var target = nativeEvent.target;
+      if (target && !target.onclick) {
+        target.onclick = emptyFunction;
+      }
+    }
+  }
+
+};
+
+module.exports = MobileSafariClickEventPlugin;
+
+},{ "./EventConstants":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventConstants.js","./emptyFunction":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/emptyFunction.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserComponentMixin.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactBrowserComponentMixin
+ */
+
+'use strict';
+
+var findDOMNode = require("./findDOMNode");
+
+var ReactBrowserComponentMixin = {
+  /**
+   * Returns the DOM node rendered by this component.
+   *
+   * @return {DOMElement} The root node of this component.
+   * @final
+   * @protected
+   */
+  getDOMNode: function() {
+    return findDOMNode(this);
+  }
+};
+
+module.exports = ReactBrowserComponentMixin;
+
+},{ "./findDOMNode":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/findDOMNode.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/HTMLDOMPropertyConfig.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -41726,7 +41726,117 @@ var HTMLDOMPropertyConfig = {
 
 module.exports = HTMLDOMPropertyConfig;
 
-},{ "./DOMProperty":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMProperty.js","./ExecutionEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ExecutionEnvironment.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDefaultBatchingStrategy.js":[function(require,module,exports){
+},{ "./DOMProperty":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMProperty.js","./ExecutionEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ExecutionEnvironment.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMButton.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactDOMButton
+ */
+
+'use strict';
+
+var AutoFocusMixin = require("./AutoFocusMixin");
+var ReactBrowserComponentMixin = require("./ReactBrowserComponentMixin");
+var ReactClass = require("./ReactClass");
+var ReactElement = require("./ReactElement");
+
+var keyMirror = require("./keyMirror");
+
+var button = ReactElement.createFactory('button');
+
+var mouseListenerNames = keyMirror({
+  onClick: true,
+  onDoubleClick: true,
+  onMouseDown: true,
+  onMouseMove: true,
+  onMouseUp: true,
+  onClickCapture: true,
+  onDoubleClickCapture: true,
+  onMouseDownCapture: true,
+  onMouseMoveCapture: true,
+  onMouseUpCapture: true
+});
+
+/**
+ * Implements a <button> native component that does not receive mouse events
+ * when `disabled` is set.
+ */
+var ReactDOMButton = ReactClass.createClass({
+  displayName: 'ReactDOMButton',
+  tagName: 'BUTTON',
+
+  mixins: [AutoFocusMixin, ReactBrowserComponentMixin],
+
+  render: function() {
+    var props = {};
+
+    // Copy the props; except the mouse listeners if we're disabled
+    for (var key in this.props) {
+      if (this.props.hasOwnProperty(key) &&
+          (!this.props.disabled || !mouseListenerNames[key])) {
+        props[key] = this.props[key];
+      }
+    }
+
+    return button(props, this.props.children);
+  }
+
+});
+
+module.exports = ReactDOMButton;
+
+},{ "./AutoFocusMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/AutoFocusMixin.js","./ReactBrowserComponentMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserComponentMixin.js","./ReactClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactClass.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./keyMirror":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/keyMirror.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMImg.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactDOMImg
+ */
+
+'use strict';
+
+var EventConstants = require("./EventConstants");
+var LocalEventTrapMixin = require("./LocalEventTrapMixin");
+var ReactBrowserComponentMixin = require("./ReactBrowserComponentMixin");
+var ReactClass = require("./ReactClass");
+var ReactElement = require("./ReactElement");
+
+var img = ReactElement.createFactory('img');
+
+/**
+ * Since onLoad doesn't bubble OR capture on the top level in IE8, we need to
+ * capture it on the <img> element itself. There are lots of hacks we could do
+ * to accomplish this, but the most reliable is to make <img> a composite
+ * component and use `componentDidMount` to attach the event handlers.
+ */
+var ReactDOMImg = ReactClass.createClass({
+  displayName: 'ReactDOMImg',
+  tagName: 'IMG',
+
+  mixins: [ReactBrowserComponentMixin, LocalEventTrapMixin],
+
+  render: function() {
+    return img(this.props);
+  },
+
+  componentDidMount: function() {
+    this.trapBubbledEvent(EventConstants.topLevelTypes.topLoad, 'load');
+    this.trapBubbledEvent(EventConstants.topLevelTypes.topError, 'error');
+  }
+});
+
+module.exports = ReactDOMImg;
+
+},{ "./EventConstants":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventConstants.js","./LocalEventTrapMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/LocalEventTrapMixin.js","./ReactBrowserComponentMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserComponentMixin.js","./ReactClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactClass.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDefaultBatchingStrategy.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -41799,71 +41909,7 @@ var ReactDefaultBatchingStrategy = {
 
 module.exports = ReactDefaultBatchingStrategy;
 
-},{ "./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./ReactUpdates":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdates.js","./Transaction":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Transaction.js","./emptyFunction":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/emptyFunction.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMButton.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule ReactDOMButton
- */
-
-'use strict';
-
-var AutoFocusMixin = require("./AutoFocusMixin");
-var ReactBrowserComponentMixin = require("./ReactBrowserComponentMixin");
-var ReactClass = require("./ReactClass");
-var ReactElement = require("./ReactElement");
-
-var keyMirror = require("./keyMirror");
-
-var button = ReactElement.createFactory('button');
-
-var mouseListenerNames = keyMirror({
-  onClick: true,
-  onDoubleClick: true,
-  onMouseDown: true,
-  onMouseMove: true,
-  onMouseUp: true,
-  onClickCapture: true,
-  onDoubleClickCapture: true,
-  onMouseDownCapture: true,
-  onMouseMoveCapture: true,
-  onMouseUpCapture: true
-});
-
-/**
- * Implements a <button> native component that does not receive mouse events
- * when `disabled` is set.
- */
-var ReactDOMButton = ReactClass.createClass({
-  displayName: 'ReactDOMButton',
-  tagName: 'BUTTON',
-
-  mixins: [AutoFocusMixin, ReactBrowserComponentMixin],
-
-  render: function() {
-    var props = {};
-
-    // Copy the props; except the mouse listeners if we're disabled
-    for (var key in this.props) {
-      if (this.props.hasOwnProperty(key) &&
-          (!this.props.disabled || !mouseListenerNames[key])) {
-        props[key] = this.props[key];
-      }
-    }
-
-    return button(props, this.props.children);
-  }
-
-});
-
-module.exports = ReactDOMButton;
-
-},{ "./AutoFocusMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/AutoFocusMixin.js","./ReactBrowserComponentMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserComponentMixin.js","./ReactClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactClass.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./keyMirror":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/keyMirror.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMForm.js":[function(require,module,exports){
+},{ "./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./ReactUpdates":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdates.js","./Transaction":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Transaction.js","./emptyFunction":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/emptyFunction.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMForm.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -41912,7 +41958,7 @@ var ReactDOMForm = ReactClass.createClass({
 
 module.exports = ReactDOMForm;
 
-},{ "./EventConstants":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventConstants.js","./LocalEventTrapMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/LocalEventTrapMixin.js","./ReactBrowserComponentMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserComponentMixin.js","./ReactClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactClass.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMImg.js":[function(require,module,exports){
+},{ "./EventConstants":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventConstants.js","./LocalEventTrapMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/LocalEventTrapMixin.js","./ReactBrowserComponentMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserComponentMixin.js","./ReactClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactClass.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMIDOperations.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -41921,44 +41967,164 @@ module.exports = ReactDOMForm;
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
  *
- * @providesModule ReactDOMImg
+ * @providesModule ReactDOMIDOperations
+ * @typechecks static-only
  */
+
+/*jslint evil: true */
 
 'use strict';
 
-var EventConstants = require("./EventConstants");
-var LocalEventTrapMixin = require("./LocalEventTrapMixin");
-var ReactBrowserComponentMixin = require("./ReactBrowserComponentMixin");
-var ReactClass = require("./ReactClass");
-var ReactElement = require("./ReactElement");
+var CSSPropertyOperations = require("./CSSPropertyOperations");
+var DOMChildrenOperations = require("./DOMChildrenOperations");
+var DOMPropertyOperations = require("./DOMPropertyOperations");
+var ReactMount = require("./ReactMount");
+var ReactPerf = require("./ReactPerf");
 
-var img = ReactElement.createFactory('img');
+var invariant = require("./invariant");
+var setInnerHTML = require("./setInnerHTML");
 
 /**
- * Since onLoad doesn't bubble OR capture on the top level in IE8, we need to
- * capture it on the <img> element itself. There are lots of hacks we could do
- * to accomplish this, but the most reliable is to make <img> a composite
- * component and use `componentDidMount` to attach the event handlers.
+ * Errors for properties that should not be updated with `updatePropertyById()`.
+ *
+ * @type {object}
+ * @private
  */
-var ReactDOMImg = ReactClass.createClass({
-  displayName: 'ReactDOMImg',
-  tagName: 'IMG',
+var INVALID_PROPERTY_ERRORS = {
+  dangerouslySetInnerHTML:
+    '`dangerouslySetInnerHTML` must be set using `updateInnerHTMLByID()`.',
+  style: '`style` must be set using `updateStylesByID()`.'
+};
 
-  mixins: [ReactBrowserComponentMixin, LocalEventTrapMixin],
+/**
+ * Operations used to process updates to DOM nodes. This is made injectable via
+ * `ReactDOMComponent.BackendIDOperations`.
+ */
+var ReactDOMIDOperations = {
 
-  render: function() {
-    return img(this.props);
+  /**
+   * Updates a DOM node with new property values. This should only be used to
+   * update DOM properties in `DOMProperty`.
+   *
+   * @param {string} id ID of the node to update.
+   * @param {string} name A valid property name, see `DOMProperty`.
+   * @param {*} value New value of the property.
+   * @internal
+   */
+  updatePropertyByID: function(id, name, value) {
+    var node = ReactMount.getNode(id);
+    ("production" !== process.env.NODE_ENV ? invariant(
+      !INVALID_PROPERTY_ERRORS.hasOwnProperty(name),
+      'updatePropertyByID(...): %s',
+      INVALID_PROPERTY_ERRORS[name]
+    ) : invariant(!INVALID_PROPERTY_ERRORS.hasOwnProperty(name)));
+
+    // If we're updating to null or undefined, we should remove the property
+    // from the DOM node instead of inadvertantly setting to a string. This
+    // brings us in line with the same behavior we have on initial render.
+    if (value != null) {
+      DOMPropertyOperations.setValueForProperty(node, name, value);
+    } else {
+      DOMPropertyOperations.deleteValueForProperty(node, name);
+    }
   },
 
-  componentDidMount: function() {
-    this.trapBubbledEvent(EventConstants.topLevelTypes.topLoad, 'load');
-    this.trapBubbledEvent(EventConstants.topLevelTypes.topError, 'error');
+  /**
+   * Updates a DOM node to remove a property. This should only be used to remove
+   * DOM properties in `DOMProperty`.
+   *
+   * @param {string} id ID of the node to update.
+   * @param {string} name A property name to remove, see `DOMProperty`.
+   * @internal
+   */
+  deletePropertyByID: function(id, name, value) {
+    var node = ReactMount.getNode(id);
+    ("production" !== process.env.NODE_ENV ? invariant(
+      !INVALID_PROPERTY_ERRORS.hasOwnProperty(name),
+      'updatePropertyByID(...): %s',
+      INVALID_PROPERTY_ERRORS[name]
+    ) : invariant(!INVALID_PROPERTY_ERRORS.hasOwnProperty(name)));
+    DOMPropertyOperations.deleteValueForProperty(node, name, value);
+  },
+
+  /**
+   * Updates a DOM node with new style values. If a value is specified as '',
+   * the corresponding style property will be unset.
+   *
+   * @param {string} id ID of the node to update.
+   * @param {object} styles Mapping from styles to values.
+   * @internal
+   */
+  updateStylesByID: function(id, styles) {
+    var node = ReactMount.getNode(id);
+    CSSPropertyOperations.setValueForStyles(node, styles);
+  },
+
+  /**
+   * Updates a DOM node's innerHTML.
+   *
+   * @param {string} id ID of the node to update.
+   * @param {string} html An HTML string.
+   * @internal
+   */
+  updateInnerHTMLByID: function(id, html) {
+    var node = ReactMount.getNode(id);
+    setInnerHTML(node, html);
+  },
+
+  /**
+   * Updates a DOM node's text content set by `props.content`.
+   *
+   * @param {string} id ID of the node to update.
+   * @param {string} content Text content.
+   * @internal
+   */
+  updateTextContentByID: function(id, content) {
+    var node = ReactMount.getNode(id);
+    DOMChildrenOperations.updateTextContent(node, content);
+  },
+
+  /**
+   * Replaces a DOM node that exists in the document with markup.
+   *
+   * @param {string} id ID of child to be replaced.
+   * @param {string} markup Dangerous markup to inject in place of child.
+   * @internal
+   * @see {Danger.dangerouslyReplaceNodeWithMarkup}
+   */
+  dangerouslyReplaceNodeWithMarkupByID: function(id, markup) {
+    var node = ReactMount.getNode(id);
+    DOMChildrenOperations.dangerouslyReplaceNodeWithMarkup(node, markup);
+  },
+
+  /**
+   * Updates a component's children by processing a series of updates.
+   *
+   * @param {array<object>} updates List of update configurations.
+   * @param {array<string>} markup List of markup strings.
+   * @internal
+   */
+  dangerouslyProcessChildrenUpdates: function(updates, markup) {
+    for (var i = 0; i < updates.length; i++) {
+      updates[i].parentNode = ReactMount.getNode(updates[i].parentID);
+    }
+    DOMChildrenOperations.processUpdates(updates, markup);
   }
+};
+
+ReactPerf.measureMethods(ReactDOMIDOperations, 'ReactDOMIDOperations', {
+  updatePropertyByID: 'updatePropertyByID',
+  deletePropertyByID: 'deletePropertyByID',
+  updateStylesByID: 'updateStylesByID',
+  updateInnerHTMLByID: 'updateInnerHTMLByID',
+  updateTextContentByID: 'updateTextContentByID',
+  dangerouslyReplaceNodeWithMarkupByID: 'dangerouslyReplaceNodeWithMarkupByID',
+  dangerouslyProcessChildrenUpdates: 'dangerouslyProcessChildrenUpdates'
 });
 
-module.exports = ReactDOMImg;
+module.exports = ReactDOMIDOperations;
 
-},{ "./EventConstants":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventConstants.js","./LocalEventTrapMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/LocalEventTrapMixin.js","./ReactBrowserComponentMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserComponentMixin.js","./ReactClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactClass.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMInput.js":[function(require,module,exports){
+},{ "./CSSPropertyOperations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/CSSPropertyOperations.js","./DOMChildrenOperations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMChildrenOperations.js","./DOMPropertyOperations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMPropertyOperations.js","./ReactMount":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMount.js","./ReactPerf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPerf.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./setInnerHTML":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/setInnerHTML.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMInput.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -42133,52 +42299,7 @@ var ReactDOMInput = ReactClass.createClass({
 
 module.exports = ReactDOMInput;
 
-},{ "./AutoFocusMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/AutoFocusMixin.js","./DOMPropertyOperations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMPropertyOperations.js","./LinkedValueUtils":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/LinkedValueUtils.js","./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./ReactBrowserComponentMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserComponentMixin.js","./ReactClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactClass.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactMount":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMount.js","./ReactUpdates":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdates.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMIframe.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule ReactDOMIframe
- */
-
-'use strict';
-
-var EventConstants = require("./EventConstants");
-var LocalEventTrapMixin = require("./LocalEventTrapMixin");
-var ReactBrowserComponentMixin = require("./ReactBrowserComponentMixin");
-var ReactClass = require("./ReactClass");
-var ReactElement = require("./ReactElement");
-
-var iframe = ReactElement.createFactory('iframe');
-
-/**
- * Since onLoad doesn't bubble OR capture on the top level in IE8, we need to
- * capture it on the <iframe> element itself. There are lots of hacks we could
- * do to accomplish this, but the most reliable is to make <iframe> a composite
- * component and use `componentDidMount` to attach the event handlers.
- */
-var ReactDOMIframe = ReactClass.createClass({
-  displayName: 'ReactDOMIframe',
-  tagName: 'IFRAME',
-
-  mixins: [ReactBrowserComponentMixin, LocalEventTrapMixin],
-
-  render: function() {
-    return iframe(this.props);
-  },
-
-  componentDidMount: function() {
-    this.trapBubbledEvent(EventConstants.topLevelTypes.topLoad, 'load');
-  }
-});
-
-module.exports = ReactDOMIframe;
-
-},{ "./EventConstants":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventConstants.js","./LocalEventTrapMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/LocalEventTrapMixin.js","./ReactBrowserComponentMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserComponentMixin.js","./ReactClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactClass.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMOption.js":[function(require,module,exports){
+},{ "./AutoFocusMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/AutoFocusMixin.js","./DOMPropertyOperations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMPropertyOperations.js","./LinkedValueUtils":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/LinkedValueUtils.js","./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./ReactBrowserComponentMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserComponentMixin.js","./ReactClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactClass.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactMount":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMount.js","./ReactUpdates":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdates.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMOption.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -42228,7 +42349,7 @@ var ReactDOMOption = ReactClass.createClass({
 
 module.exports = ReactDOMOption;
 
-},{ "./ReactBrowserComponentMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserComponentMixin.js","./ReactClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactClass.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMIDOperations.js":[function(require,module,exports){
+},{ "./ReactBrowserComponentMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserComponentMixin.js","./ReactClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactClass.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMSelect.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -42237,164 +42358,221 @@ module.exports = ReactDOMOption;
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
  *
- * @providesModule ReactDOMIDOperations
- * @typechecks static-only
+ * @providesModule ReactDOMSelect
  */
-
-/*jslint evil: true */
 
 'use strict';
 
-var CSSPropertyOperations = require("./CSSPropertyOperations");
-var DOMChildrenOperations = require("./DOMChildrenOperations");
-var DOMPropertyOperations = require("./DOMPropertyOperations");
-var ReactMount = require("./ReactMount");
-var ReactPerf = require("./ReactPerf");
+var AutoFocusMixin = require("./AutoFocusMixin");
+var LinkedValueUtils = require("./LinkedValueUtils");
+var ReactBrowserComponentMixin = require("./ReactBrowserComponentMixin");
+var ReactClass = require("./ReactClass");
+var ReactElement = require("./ReactElement");
+var ReactUpdates = require("./ReactUpdates");
 
-var invariant = require("./invariant");
-var setInnerHTML = require("./setInnerHTML");
+var assign = require("./Object.assign");
+
+var select = ReactElement.createFactory('select');
+
+function updateOptionsIfPendingUpdateAndMounted() {
+  /*jshint validthis:true */
+  if (this._pendingUpdate) {
+    this._pendingUpdate = false;
+    var value = LinkedValueUtils.getValue(this);
+    if (value != null && this.isMounted()) {
+      updateOptions(this, value);
+    }
+  }
+}
 
 /**
- * Errors for properties that should not be updated with `updatePropertyById()`.
- *
- * @type {object}
+ * Validation function for `value` and `defaultValue`.
  * @private
  */
-var INVALID_PROPERTY_ERRORS = {
-  dangerouslySetInnerHTML:
-    '`dangerouslySetInnerHTML` must be set using `updateInnerHTMLByID()`.',
-  style: '`style` must be set using `updateStylesByID()`.'
-};
+function selectValueType(props, propName, componentName) {
+  if (props[propName] == null) {
+    return null;
+  }
+  if (props.multiple) {
+    if (!Array.isArray(props[propName])) {
+      return new Error(
+        ("The `" + propName + "` prop supplied to <select> must be an array if ") +
+        ("`multiple` is true.")
+      );
+    }
+  } else {
+    if (Array.isArray(props[propName])) {
+      return new Error(
+        ("The `" + propName + "` prop supplied to <select> must be a scalar ") +
+        ("value if `multiple` is false.")
+      );
+    }
+  }
+}
 
 /**
- * Operations used to process updates to DOM nodes. This is made injectable via
- * `ReactDOMComponent.BackendIDOperations`.
+ * @param {ReactComponent} component Instance of ReactDOMSelect
+ * @param {*} propValue A stringable (with `multiple`, a list of stringables).
+ * @private
  */
-var ReactDOMIDOperations = {
+function updateOptions(component, propValue) {
+  var selectedValue, i, l;
+  var options = component.getDOMNode().options;
 
-  /**
-   * Updates a DOM node with new property values. This should only be used to
-   * update DOM properties in `DOMProperty`.
-   *
-   * @param {string} id ID of the node to update.
-   * @param {string} name A valid property name, see `DOMProperty`.
-   * @param {*} value New value of the property.
-   * @internal
-   */
-  updatePropertyByID: function(id, name, value) {
-    var node = ReactMount.getNode(id);
-    ("production" !== process.env.NODE_ENV ? invariant(
-      !INVALID_PROPERTY_ERRORS.hasOwnProperty(name),
-      'updatePropertyByID(...): %s',
-      INVALID_PROPERTY_ERRORS[name]
-    ) : invariant(!INVALID_PROPERTY_ERRORS.hasOwnProperty(name)));
-
-    // If we're updating to null or undefined, we should remove the property
-    // from the DOM node instead of inadvertantly setting to a string. This
-    // brings us in line with the same behavior we have on initial render.
-    if (value != null) {
-      DOMPropertyOperations.setValueForProperty(node, name, value);
-    } else {
-      DOMPropertyOperations.deleteValueForProperty(node, name);
+  if (component.props.multiple) {
+    selectedValue = {};
+    for (i = 0, l = propValue.length; i < l; i++) {
+      selectedValue['' + propValue[i]] = true;
     }
-  },
-
-  /**
-   * Updates a DOM node to remove a property. This should only be used to remove
-   * DOM properties in `DOMProperty`.
-   *
-   * @param {string} id ID of the node to update.
-   * @param {string} name A property name to remove, see `DOMProperty`.
-   * @internal
-   */
-  deletePropertyByID: function(id, name, value) {
-    var node = ReactMount.getNode(id);
-    ("production" !== process.env.NODE_ENV ? invariant(
-      !INVALID_PROPERTY_ERRORS.hasOwnProperty(name),
-      'updatePropertyByID(...): %s',
-      INVALID_PROPERTY_ERRORS[name]
-    ) : invariant(!INVALID_PROPERTY_ERRORS.hasOwnProperty(name)));
-    DOMPropertyOperations.deleteValueForProperty(node, name, value);
-  },
-
-  /**
-   * Updates a DOM node with new style values. If a value is specified as '',
-   * the corresponding style property will be unset.
-   *
-   * @param {string} id ID of the node to update.
-   * @param {object} styles Mapping from styles to values.
-   * @internal
-   */
-  updateStylesByID: function(id, styles) {
-    var node = ReactMount.getNode(id);
-    CSSPropertyOperations.setValueForStyles(node, styles);
-  },
-
-  /**
-   * Updates a DOM node's innerHTML.
-   *
-   * @param {string} id ID of the node to update.
-   * @param {string} html An HTML string.
-   * @internal
-   */
-  updateInnerHTMLByID: function(id, html) {
-    var node = ReactMount.getNode(id);
-    setInnerHTML(node, html);
-  },
-
-  /**
-   * Updates a DOM node's text content set by `props.content`.
-   *
-   * @param {string} id ID of the node to update.
-   * @param {string} content Text content.
-   * @internal
-   */
-  updateTextContentByID: function(id, content) {
-    var node = ReactMount.getNode(id);
-    DOMChildrenOperations.updateTextContent(node, content);
-  },
-
-  /**
-   * Replaces a DOM node that exists in the document with markup.
-   *
-   * @param {string} id ID of child to be replaced.
-   * @param {string} markup Dangerous markup to inject in place of child.
-   * @internal
-   * @see {Danger.dangerouslyReplaceNodeWithMarkup}
-   */
-  dangerouslyReplaceNodeWithMarkupByID: function(id, markup) {
-    var node = ReactMount.getNode(id);
-    DOMChildrenOperations.dangerouslyReplaceNodeWithMarkup(node, markup);
-  },
-
-  /**
-   * Updates a component's children by processing a series of updates.
-   *
-   * @param {array<object>} updates List of update configurations.
-   * @param {array<string>} markup List of markup strings.
-   * @internal
-   */
-  dangerouslyProcessChildrenUpdates: function(updates, markup) {
-    for (var i = 0; i < updates.length; i++) {
-      updates[i].parentNode = ReactMount.getNode(updates[i].parentID);
+    for (i = 0, l = options.length; i < l; i++) {
+      var selected = selectedValue.hasOwnProperty(options[i].value);
+      if (options[i].selected !== selected) {
+        options[i].selected = selected;
+      }
     }
-    DOMChildrenOperations.processUpdates(updates, markup);
+  } else {
+    // Do not set `select.value` as exact behavior isn't consistent across all
+    // browsers for all cases.
+    selectedValue = '' + propValue;
+    for (i = 0, l = options.length; i < l; i++) {
+      if (options[i].value === selectedValue) {
+        options[i].selected = true;
+        return;
+      }
+    }
+    if (options.length) {
+      options[0].selected = true;
+    }
   }
-};
+}
 
-ReactPerf.measureMethods(ReactDOMIDOperations, 'ReactDOMIDOperations', {
-  updatePropertyByID: 'updatePropertyByID',
-  deletePropertyByID: 'deletePropertyByID',
-  updateStylesByID: 'updateStylesByID',
-  updateInnerHTMLByID: 'updateInnerHTMLByID',
-  updateTextContentByID: 'updateTextContentByID',
-  dangerouslyReplaceNodeWithMarkupByID: 'dangerouslyReplaceNodeWithMarkupByID',
-  dangerouslyProcessChildrenUpdates: 'dangerouslyProcessChildrenUpdates'
+/**
+ * Implements a <select> native component that allows optionally setting the
+ * props `value` and `defaultValue`. If `multiple` is false, the prop must be a
+ * stringable. If `multiple` is true, the prop must be an array of stringables.
+ *
+ * If `value` is not supplied (or null/undefined), user actions that change the
+ * selected option will trigger updates to the rendered options.
+ *
+ * If it is supplied (and not null/undefined), the rendered options will not
+ * update in response to user actions. Instead, the `value` prop must change in
+ * order for the rendered options to update.
+ *
+ * If `defaultValue` is provided, any options with the supplied values will be
+ * selected.
+ */
+var ReactDOMSelect = ReactClass.createClass({
+  displayName: 'ReactDOMSelect',
+  tagName: 'SELECT',
+
+  mixins: [AutoFocusMixin, LinkedValueUtils.Mixin, ReactBrowserComponentMixin],
+
+  propTypes: {
+    defaultValue: selectValueType,
+    value: selectValueType
+  },
+
+  render: function() {
+    // Clone `this.props` so we don't mutate the input.
+    var props = assign({}, this.props);
+
+    props.onChange = this._handleChange;
+    props.value = null;
+
+    return select(props, this.props.children);
+  },
+
+  componentWillMount: function() {
+    this._pendingUpdate = false;
+  },
+
+  componentDidMount: function() {
+    var value = LinkedValueUtils.getValue(this);
+    if (value != null) {
+      updateOptions(this, value);
+    } else if (this.props.defaultValue != null) {
+      updateOptions(this, this.props.defaultValue);
+    }
+  },
+
+  componentDidUpdate: function(prevProps) {
+    var value = LinkedValueUtils.getValue(this);
+    if (value != null) {
+      this._pendingUpdate = false;
+      updateOptions(this, value);
+    } else if (!prevProps.multiple !== !this.props.multiple) {
+      // For simplicity, reapply `defaultValue` if `multiple` is toggled.
+      if (this.props.defaultValue != null) {
+        updateOptions(this, this.props.defaultValue);
+      } else {
+        // Revert the select back to its default unselected state.
+        updateOptions(this, this.props.multiple ? [] : '');
+      }
+    }
+  },
+
+  _handleChange: function(event) {
+    var returnValue;
+    var onChange = LinkedValueUtils.getOnChange(this);
+    if (onChange) {
+      returnValue = onChange.call(this, event);
+    }
+
+    this._pendingUpdate = true;
+    ReactUpdates.asap(updateOptionsIfPendingUpdateAndMounted, this);
+    return returnValue;
+  }
+
 });
 
-module.exports = ReactDOMIDOperations;
+module.exports = ReactDOMSelect;
 
-},{ "./CSSPropertyOperations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/CSSPropertyOperations.js","./DOMChildrenOperations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMChildrenOperations.js","./DOMPropertyOperations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMPropertyOperations.js","./ReactMount":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMount.js","./ReactPerf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPerf.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./setInnerHTML":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/setInnerHTML.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMTextarea.js":[function(require,module,exports){
+},{ "./AutoFocusMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/AutoFocusMixin.js","./LinkedValueUtils":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/LinkedValueUtils.js","./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./ReactBrowserComponentMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserComponentMixin.js","./ReactClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactClass.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactUpdates":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdates.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMIframe.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactDOMIframe
+ */
+
+'use strict';
+
+var EventConstants = require("./EventConstants");
+var LocalEventTrapMixin = require("./LocalEventTrapMixin");
+var ReactBrowserComponentMixin = require("./ReactBrowserComponentMixin");
+var ReactClass = require("./ReactClass");
+var ReactElement = require("./ReactElement");
+
+var iframe = ReactElement.createFactory('iframe');
+
+/**
+ * Since onLoad doesn't bubble OR capture on the top level in IE8, we need to
+ * capture it on the <iframe> element itself. There are lots of hacks we could
+ * do to accomplish this, but the most reliable is to make <iframe> a composite
+ * component and use `componentDidMount` to attach the event handlers.
+ */
+var ReactDOMIframe = ReactClass.createClass({
+  displayName: 'ReactDOMIframe',
+  tagName: 'IFRAME',
+
+  mixins: [ReactBrowserComponentMixin, LocalEventTrapMixin],
+
+  render: function() {
+    return iframe(this.props);
+  },
+
+  componentDidMount: function() {
+    this.trapBubbledEvent(EventConstants.topLevelTypes.topLoad, 'load');
+  }
+});
+
+module.exports = ReactDOMIframe;
+
+},{ "./EventConstants":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventConstants.js","./LocalEventTrapMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/LocalEventTrapMixin.js","./ReactBrowserComponentMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserComponentMixin.js","./ReactClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactClass.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMTextarea.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -42532,7 +42710,49 @@ var ReactDOMTextarea = ReactClass.createClass({
 
 module.exports = ReactDOMTextarea;
 
-},{ "./AutoFocusMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/AutoFocusMixin.js","./DOMPropertyOperations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMPropertyOperations.js","./LinkedValueUtils":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/LinkedValueUtils.js","./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./ReactBrowserComponentMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserComponentMixin.js","./ReactClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactClass.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactUpdates":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdates.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactEventListener.js":[function(require,module,exports){
+},{ "./AutoFocusMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/AutoFocusMixin.js","./DOMPropertyOperations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMPropertyOperations.js","./LinkedValueUtils":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/LinkedValueUtils.js","./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./ReactBrowserComponentMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserComponentMixin.js","./ReactClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactClass.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactUpdates":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdates.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInjection.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactInjection
+ */
+
+'use strict';
+
+var DOMProperty = require("./DOMProperty");
+var EventPluginHub = require("./EventPluginHub");
+var ReactComponentEnvironment = require("./ReactComponentEnvironment");
+var ReactClass = require("./ReactClass");
+var ReactEmptyComponent = require("./ReactEmptyComponent");
+var ReactBrowserEventEmitter = require("./ReactBrowserEventEmitter");
+var ReactNativeComponent = require("./ReactNativeComponent");
+var ReactDOMComponent = require("./ReactDOMComponent");
+var ReactPerf = require("./ReactPerf");
+var ReactRootIndex = require("./ReactRootIndex");
+var ReactUpdates = require("./ReactUpdates");
+
+var ReactInjection = {
+  Component: ReactComponentEnvironment.injection,
+  Class: ReactClass.injection,
+  DOMComponent: ReactDOMComponent.injection,
+  DOMProperty: DOMProperty.injection,
+  EmptyComponent: ReactEmptyComponent.injection,
+  EventPluginHub: EventPluginHub.injection,
+  EventEmitter: ReactBrowserEventEmitter.injection,
+  NativeComponent: ReactNativeComponent.injection,
+  Perf: ReactPerf.injection,
+  RootIndex: ReactRootIndex.injection,
+  Updates: ReactUpdates.injection
+};
+
+module.exports = ReactInjection;
+
+},{ "./DOMProperty":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMProperty.js","./EventPluginHub":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPluginHub.js","./ReactBrowserEventEmitter":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserEventEmitter.js","./ReactClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactClass.js","./ReactComponentEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactComponentEnvironment.js","./ReactDOMComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMComponent.js","./ReactEmptyComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactEmptyComponent.js","./ReactNativeComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactNativeComponent.js","./ReactPerf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPerf.js","./ReactRootIndex":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactRootIndex.js","./ReactUpdates":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdates.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactEventListener.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -42715,7 +42935,7 @@ var ReactEventListener = {
 
 module.exports = ReactEventListener;
 
-},{ "./EventListener":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventListener.js","./ExecutionEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ExecutionEnvironment.js","./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./PooledClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/PooledClass.js","./ReactInstanceHandles":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInstanceHandles.js","./ReactMount":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMount.js","./ReactUpdates":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdates.js","./getEventTarget":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventTarget.js","./getUnboundedScrollPosition":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getUnboundedScrollPosition.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInjection.js":[function(require,module,exports){
+},{ "./EventListener":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventListener.js","./ExecutionEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ExecutionEnvironment.js","./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./PooledClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/PooledClass.js","./ReactInstanceHandles":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInstanceHandles.js","./ReactMount":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMount.js","./ReactUpdates":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdates.js","./getEventTarget":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventTarget.js","./getUnboundedScrollPosition":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getUnboundedScrollPosition.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactReconcileTransaction.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -42724,218 +42944,174 @@ module.exports = ReactEventListener;
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
  *
- * @providesModule ReactInjection
+ * @providesModule ReactReconcileTransaction
+ * @typechecks static-only
  */
 
 'use strict';
 
-var DOMProperty = require("./DOMProperty");
-var EventPluginHub = require("./EventPluginHub");
-var ReactComponentEnvironment = require("./ReactComponentEnvironment");
-var ReactClass = require("./ReactClass");
-var ReactEmptyComponent = require("./ReactEmptyComponent");
+var CallbackQueue = require("./CallbackQueue");
+var PooledClass = require("./PooledClass");
 var ReactBrowserEventEmitter = require("./ReactBrowserEventEmitter");
-var ReactNativeComponent = require("./ReactNativeComponent");
-var ReactDOMComponent = require("./ReactDOMComponent");
-var ReactPerf = require("./ReactPerf");
-var ReactRootIndex = require("./ReactRootIndex");
-var ReactUpdates = require("./ReactUpdates");
-
-var ReactInjection = {
-  Component: ReactComponentEnvironment.injection,
-  Class: ReactClass.injection,
-  DOMComponent: ReactDOMComponent.injection,
-  DOMProperty: DOMProperty.injection,
-  EmptyComponent: ReactEmptyComponent.injection,
-  EventPluginHub: EventPluginHub.injection,
-  EventEmitter: ReactBrowserEventEmitter.injection,
-  NativeComponent: ReactNativeComponent.injection,
-  Perf: ReactPerf.injection,
-  RootIndex: ReactRootIndex.injection,
-  Updates: ReactUpdates.injection
-};
-
-module.exports = ReactInjection;
-
-},{ "./DOMProperty":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMProperty.js","./EventPluginHub":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPluginHub.js","./ReactBrowserEventEmitter":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserEventEmitter.js","./ReactClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactClass.js","./ReactComponentEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactComponentEnvironment.js","./ReactDOMComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMComponent.js","./ReactEmptyComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactEmptyComponent.js","./ReactNativeComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactNativeComponent.js","./ReactPerf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPerf.js","./ReactRootIndex":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactRootIndex.js","./ReactUpdates":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdates.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMSelect.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule ReactDOMSelect
- */
-
-'use strict';
-
-var AutoFocusMixin = require("./AutoFocusMixin");
-var LinkedValueUtils = require("./LinkedValueUtils");
-var ReactBrowserComponentMixin = require("./ReactBrowserComponentMixin");
-var ReactClass = require("./ReactClass");
-var ReactElement = require("./ReactElement");
-var ReactUpdates = require("./ReactUpdates");
+var ReactInputSelection = require("./ReactInputSelection");
+var ReactPutListenerQueue = require("./ReactPutListenerQueue");
+var Transaction = require("./Transaction");
 
 var assign = require("./Object.assign");
 
-var select = ReactElement.createFactory('select');
-
-function updateOptionsIfPendingUpdateAndMounted() {
-  /*jshint validthis:true */
-  if (this._pendingUpdate) {
-    this._pendingUpdate = false;
-    var value = LinkedValueUtils.getValue(this);
-    if (value != null && this.isMounted()) {
-      updateOptions(this, value);
-    }
-  }
-}
+/**
+ * Ensures that, when possible, the selection range (currently selected text
+ * input) is not disturbed by performing the transaction.
+ */
+var SELECTION_RESTORATION = {
+  /**
+   * @return {Selection} Selection information.
+   */
+  initialize: ReactInputSelection.getSelectionInformation,
+  /**
+   * @param {Selection} sel Selection information returned from `initialize`.
+   */
+  close: ReactInputSelection.restoreSelection
+};
 
 /**
- * Validation function for `value` and `defaultValue`.
- * @private
+ * Suppresses events (blur/focus) that could be inadvertently dispatched due to
+ * high level DOM manipulations (like temporarily removing a text input from the
+ * DOM).
  */
-function selectValueType(props, propName, componentName) {
-  if (props[propName] == null) {
-    return null;
+var EVENT_SUPPRESSION = {
+  /**
+   * @return {boolean} The enabled status of `ReactBrowserEventEmitter` before
+   * the reconciliation.
+   */
+  initialize: function() {
+    var currentlyEnabled = ReactBrowserEventEmitter.isEnabled();
+    ReactBrowserEventEmitter.setEnabled(false);
+    return currentlyEnabled;
+  },
+
+  /**
+   * @param {boolean} previouslyEnabled Enabled status of
+   *   `ReactBrowserEventEmitter` before the reconciliation occured. `close`
+   *   restores the previous value.
+   */
+  close: function(previouslyEnabled) {
+    ReactBrowserEventEmitter.setEnabled(previouslyEnabled);
   }
-  if (props.multiple) {
-    if (!Array.isArray(props[propName])) {
-      return new Error(
-        ("The `" + propName + "` prop supplied to <select> must be an array if ") +
-        ("`multiple` is true.")
-      );
-    }
-  } else {
-    if (Array.isArray(props[propName])) {
-      return new Error(
-        ("The `" + propName + "` prop supplied to <select> must be a scalar ") +
-        ("value if `multiple` is false.")
-      );
-    }
-  }
-}
+};
 
 /**
- * @param {ReactComponent} component Instance of ReactDOMSelect
- * @param {*} propValue A stringable (with `multiple`, a list of stringables).
- * @private
+ * Provides a queue for collecting `componentDidMount` and
+ * `componentDidUpdate` callbacks during the the transaction.
  */
-function updateOptions(component, propValue) {
-  var selectedValue, i, l;
-  var options = component.getDOMNode().options;
+var ON_DOM_READY_QUEUEING = {
+  /**
+   * Initializes the internal `onDOMReady` queue.
+   */
+  initialize: function() {
+    this.reactMountReady.reset();
+  },
 
-  if (component.props.multiple) {
-    selectedValue = {};
-    for (i = 0, l = propValue.length; i < l; i++) {
-      selectedValue['' + propValue[i]] = true;
-    }
-    for (i = 0, l = options.length; i < l; i++) {
-      var selected = selectedValue.hasOwnProperty(options[i].value);
-      if (options[i].selected !== selected) {
-        options[i].selected = selected;
-      }
-    }
-  } else {
-    // Do not set `select.value` as exact behavior isn't consistent across all
-    // browsers for all cases.
-    selectedValue = '' + propValue;
-    for (i = 0, l = options.length; i < l; i++) {
-      if (options[i].value === selectedValue) {
-        options[i].selected = true;
-        return;
-      }
-    }
-    if (options.length) {
-      options[0].selected = true;
-    }
+  /**
+   * After DOM is flushed, invoke all registered `onDOMReady` callbacks.
+   */
+  close: function() {
+    this.reactMountReady.notifyAll();
   }
-}
+};
+
+var PUT_LISTENER_QUEUEING = {
+  initialize: function() {
+    this.putListenerQueue.reset();
+  },
+
+  close: function() {
+    this.putListenerQueue.putListeners();
+  }
+};
 
 /**
- * Implements a <select> native component that allows optionally setting the
- * props `value` and `defaultValue`. If `multiple` is false, the prop must be a
- * stringable. If `multiple` is true, the prop must be an array of stringables.
- *
- * If `value` is not supplied (or null/undefined), user actions that change the
- * selected option will trigger updates to the rendered options.
- *
- * If it is supplied (and not null/undefined), the rendered options will not
- * update in response to user actions. Instead, the `value` prop must change in
- * order for the rendered options to update.
- *
- * If `defaultValue` is provided, any options with the supplied values will be
- * selected.
+ * Executed within the scope of the `Transaction` instance. Consider these as
+ * being member methods, but with an implied ordering while being isolated from
+ * each other.
  */
-var ReactDOMSelect = ReactClass.createClass({
-  displayName: 'ReactDOMSelect',
-  tagName: 'SELECT',
+var TRANSACTION_WRAPPERS = [
+  PUT_LISTENER_QUEUEING,
+  SELECTION_RESTORATION,
+  EVENT_SUPPRESSION,
+  ON_DOM_READY_QUEUEING
+];
 
-  mixins: [AutoFocusMixin, LinkedValueUtils.Mixin, ReactBrowserComponentMixin],
+/**
+ * Currently:
+ * - The order that these are listed in the transaction is critical:
+ * - Suppresses events.
+ * - Restores selection range.
+ *
+ * Future:
+ * - Restore document/overflow scroll positions that were unintentionally
+ *   modified via DOM insertions above the top viewport boundary.
+ * - Implement/integrate with customized constraint based layout system and keep
+ *   track of which dimensions must be remeasured.
+ *
+ * @class ReactReconcileTransaction
+ */
+function ReactReconcileTransaction() {
+  this.reinitializeTransaction();
+  // Only server-side rendering really needs this option (see
+  // `ReactServerRendering`), but server-side uses
+  // `ReactServerRenderingTransaction` instead. This option is here so that it's
+  // accessible and defaults to false when `ReactDOMComponent` and
+  // `ReactTextComponent` checks it in `mountComponent`.`
+  this.renderToStaticMarkup = false;
+  this.reactMountReady = CallbackQueue.getPooled(null);
+  this.putListenerQueue = ReactPutListenerQueue.getPooled();
+}
 
-  propTypes: {
-    defaultValue: selectValueType,
-    value: selectValueType
+var Mixin = {
+  /**
+   * @see Transaction
+   * @abstract
+   * @final
+   * @return {array<object>} List of operation wrap proceedures.
+   *   TODO: convert to array<TransactionWrapper>
+   */
+  getTransactionWrappers: function() {
+    return TRANSACTION_WRAPPERS;
   },
 
-  render: function() {
-    // Clone `this.props` so we don't mutate the input.
-    var props = assign({}, this.props);
-
-    props.onChange = this._handleChange;
-    props.value = null;
-
-    return select(props, this.props.children);
+  /**
+   * @return {object} The queue to collect `onDOMReady` callbacks with.
+   */
+  getReactMountReady: function() {
+    return this.reactMountReady;
   },
 
-  componentWillMount: function() {
-    this._pendingUpdate = false;
+  getPutListenerQueue: function() {
+    return this.putListenerQueue;
   },
 
-  componentDidMount: function() {
-    var value = LinkedValueUtils.getValue(this);
-    if (value != null) {
-      updateOptions(this, value);
-    } else if (this.props.defaultValue != null) {
-      updateOptions(this, this.props.defaultValue);
-    }
-  },
+  /**
+   * `PooledClass` looks for this, and will invoke this before allowing this
+   * instance to be resused.
+   */
+  destructor: function() {
+    CallbackQueue.release(this.reactMountReady);
+    this.reactMountReady = null;
 
-  componentDidUpdate: function(prevProps) {
-    var value = LinkedValueUtils.getValue(this);
-    if (value != null) {
-      this._pendingUpdate = false;
-      updateOptions(this, value);
-    } else if (!prevProps.multiple !== !this.props.multiple) {
-      // For simplicity, reapply `defaultValue` if `multiple` is toggled.
-      if (this.props.defaultValue != null) {
-        updateOptions(this, this.props.defaultValue);
-      } else {
-        // Revert the select back to its default unselected state.
-        updateOptions(this, this.props.multiple ? [] : '');
-      }
-    }
-  },
-
-  _handleChange: function(event) {
-    var returnValue;
-    var onChange = LinkedValueUtils.getOnChange(this);
-    if (onChange) {
-      returnValue = onChange.call(this, event);
-    }
-
-    this._pendingUpdate = true;
-    ReactUpdates.asap(updateOptionsIfPendingUpdateAndMounted, this);
-    return returnValue;
+    ReactPutListenerQueue.release(this.putListenerQueue);
+    this.putListenerQueue = null;
   }
+};
 
-});
 
-module.exports = ReactDOMSelect;
+assign(ReactReconcileTransaction.prototype, Transaction.Mixin, Mixin);
 
-},{ "./AutoFocusMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/AutoFocusMixin.js","./LinkedValueUtils":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/LinkedValueUtils.js","./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./ReactBrowserComponentMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserComponentMixin.js","./ReactClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactClass.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactUpdates":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdates.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SelectEventPlugin.js":[function(require,module,exports){
+PooledClass.addPoolingTo(ReactReconcileTransaction);
+
+module.exports = ReactReconcileTransaction;
+
+},{ "./CallbackQueue":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/CallbackQueue.js","./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./PooledClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/PooledClass.js","./ReactBrowserEventEmitter":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserEventEmitter.js","./ReactInputSelection":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInputSelection.js","./ReactPutListenerQueue":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPutListenerQueue.js","./Transaction":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Transaction.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SelectEventPlugin.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -43556,7 +43732,7 @@ var SimpleEventPlugin = {
 
 module.exports = SimpleEventPlugin;
 
-},{ "./EventConstants":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventConstants.js","./EventPluginUtils":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPluginUtils.js","./EventPropagators":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPropagators.js","./SyntheticClipboardEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticClipboardEvent.js","./SyntheticDragEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticDragEvent.js","./SyntheticEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticEvent.js","./SyntheticFocusEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticFocusEvent.js","./SyntheticKeyboardEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticKeyboardEvent.js","./SyntheticMouseEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticMouseEvent.js","./SyntheticTouchEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticTouchEvent.js","./SyntheticUIEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticUIEvent.js","./SyntheticWheelEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticWheelEvent.js","./getEventCharCode":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventCharCode.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./keyOf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/keyOf.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactReconcileTransaction.js":[function(require,module,exports){
+},{ "./EventConstants":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventConstants.js","./EventPluginUtils":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPluginUtils.js","./EventPropagators":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPropagators.js","./SyntheticClipboardEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticClipboardEvent.js","./SyntheticDragEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticDragEvent.js","./SyntheticEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticEvent.js","./SyntheticFocusEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticFocusEvent.js","./SyntheticKeyboardEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticKeyboardEvent.js","./SyntheticMouseEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticMouseEvent.js","./SyntheticTouchEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticTouchEvent.js","./SyntheticUIEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticUIEvent.js","./SyntheticWheelEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticWheelEvent.js","./getEventCharCode":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventCharCode.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./keyOf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/keyOf.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMProperty.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -43565,174 +43741,590 @@ module.exports = SimpleEventPlugin;
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
  *
- * @providesModule ReactReconcileTransaction
+ * @providesModule DOMProperty
  * @typechecks static-only
+ */
+
+/*jslint bitwise: true */
+
+'use strict';
+
+var invariant = require("./invariant");
+
+function checkMask(value, bitmask) {
+  return (value & bitmask) === bitmask;
+}
+
+var DOMPropertyInjection = {
+  /**
+   * Mapping from normalized, camelcased property names to a configuration that
+   * specifies how the associated DOM property should be accessed or rendered.
+   */
+  MUST_USE_ATTRIBUTE: 0x1,
+  MUST_USE_PROPERTY: 0x2,
+  HAS_SIDE_EFFECTS: 0x4,
+  HAS_BOOLEAN_VALUE: 0x8,
+  HAS_NUMERIC_VALUE: 0x10,
+  HAS_POSITIVE_NUMERIC_VALUE: 0x20 | 0x10,
+  HAS_OVERLOADED_BOOLEAN_VALUE: 0x40,
+
+  /**
+   * Inject some specialized knowledge about the DOM. This takes a config object
+   * with the following properties:
+   *
+   * isCustomAttribute: function that given an attribute name will return true
+   * if it can be inserted into the DOM verbatim. Useful for data-* or aria-*
+   * attributes where it's impossible to enumerate all of the possible
+   * attribute names,
+   *
+   * Properties: object mapping DOM property name to one of the
+   * DOMPropertyInjection constants or null. If your attribute isn't in here,
+   * it won't get written to the DOM.
+   *
+   * DOMAttributeNames: object mapping React attribute name to the DOM
+   * attribute name. Attribute names not specified use the **lowercase**
+   * normalized name.
+   *
+   * DOMPropertyNames: similar to DOMAttributeNames but for DOM properties.
+   * Property names not specified use the normalized name.
+   *
+   * DOMMutationMethods: Properties that require special mutation methods. If
+   * `value` is undefined, the mutation method should unset the property.
+   *
+   * @param {object} domPropertyConfig the config as described above.
+   */
+  injectDOMPropertyConfig: function(domPropertyConfig) {
+    var Properties = domPropertyConfig.Properties || {};
+    var DOMAttributeNames = domPropertyConfig.DOMAttributeNames || {};
+    var DOMPropertyNames = domPropertyConfig.DOMPropertyNames || {};
+    var DOMMutationMethods = domPropertyConfig.DOMMutationMethods || {};
+
+    if (domPropertyConfig.isCustomAttribute) {
+      DOMProperty._isCustomAttributeFunctions.push(
+        domPropertyConfig.isCustomAttribute
+      );
+    }
+
+    for (var propName in Properties) {
+      ("production" !== process.env.NODE_ENV ? invariant(
+        !DOMProperty.isStandardName.hasOwnProperty(propName),
+        'injectDOMPropertyConfig(...): You\'re trying to inject DOM property ' +
+        '\'%s\' which has already been injected. You may be accidentally ' +
+        'injecting the same DOM property config twice, or you may be ' +
+        'injecting two configs that have conflicting property names.',
+        propName
+      ) : invariant(!DOMProperty.isStandardName.hasOwnProperty(propName)));
+
+      DOMProperty.isStandardName[propName] = true;
+
+      var lowerCased = propName.toLowerCase();
+      DOMProperty.getPossibleStandardName[lowerCased] = propName;
+
+      if (DOMAttributeNames.hasOwnProperty(propName)) {
+        var attributeName = DOMAttributeNames[propName];
+        DOMProperty.getPossibleStandardName[attributeName] = propName;
+        DOMProperty.getAttributeName[propName] = attributeName;
+      } else {
+        DOMProperty.getAttributeName[propName] = lowerCased;
+      }
+
+      DOMProperty.getPropertyName[propName] =
+        DOMPropertyNames.hasOwnProperty(propName) ?
+          DOMPropertyNames[propName] :
+          propName;
+
+      if (DOMMutationMethods.hasOwnProperty(propName)) {
+        DOMProperty.getMutationMethod[propName] = DOMMutationMethods[propName];
+      } else {
+        DOMProperty.getMutationMethod[propName] = null;
+      }
+
+      var propConfig = Properties[propName];
+      DOMProperty.mustUseAttribute[propName] =
+        checkMask(propConfig, DOMPropertyInjection.MUST_USE_ATTRIBUTE);
+      DOMProperty.mustUseProperty[propName] =
+        checkMask(propConfig, DOMPropertyInjection.MUST_USE_PROPERTY);
+      DOMProperty.hasSideEffects[propName] =
+        checkMask(propConfig, DOMPropertyInjection.HAS_SIDE_EFFECTS);
+      DOMProperty.hasBooleanValue[propName] =
+        checkMask(propConfig, DOMPropertyInjection.HAS_BOOLEAN_VALUE);
+      DOMProperty.hasNumericValue[propName] =
+        checkMask(propConfig, DOMPropertyInjection.HAS_NUMERIC_VALUE);
+      DOMProperty.hasPositiveNumericValue[propName] =
+        checkMask(propConfig, DOMPropertyInjection.HAS_POSITIVE_NUMERIC_VALUE);
+      DOMProperty.hasOverloadedBooleanValue[propName] =
+        checkMask(propConfig, DOMPropertyInjection.HAS_OVERLOADED_BOOLEAN_VALUE);
+
+      ("production" !== process.env.NODE_ENV ? invariant(
+        !DOMProperty.mustUseAttribute[propName] ||
+          !DOMProperty.mustUseProperty[propName],
+        'DOMProperty: Cannot require using both attribute and property: %s',
+        propName
+      ) : invariant(!DOMProperty.mustUseAttribute[propName] ||
+        !DOMProperty.mustUseProperty[propName]));
+      ("production" !== process.env.NODE_ENV ? invariant(
+        DOMProperty.mustUseProperty[propName] ||
+          !DOMProperty.hasSideEffects[propName],
+        'DOMProperty: Properties that have side effects must use property: %s',
+        propName
+      ) : invariant(DOMProperty.mustUseProperty[propName] ||
+        !DOMProperty.hasSideEffects[propName]));
+      ("production" !== process.env.NODE_ENV ? invariant(
+        !!DOMProperty.hasBooleanValue[propName] +
+          !!DOMProperty.hasNumericValue[propName] +
+          !!DOMProperty.hasOverloadedBooleanValue[propName] <= 1,
+        'DOMProperty: Value can be one of boolean, overloaded boolean, or ' +
+        'numeric value, but not a combination: %s',
+        propName
+      ) : invariant(!!DOMProperty.hasBooleanValue[propName] +
+        !!DOMProperty.hasNumericValue[propName] +
+        !!DOMProperty.hasOverloadedBooleanValue[propName] <= 1));
+    }
+  }
+};
+var defaultValueCache = {};
+
+/**
+ * DOMProperty exports lookup objects that can be used like functions:
+ *
+ *   > DOMProperty.isValid['id']
+ *   true
+ *   > DOMProperty.isValid['foobar']
+ *   undefined
+ *
+ * Although this may be confusing, it performs better in general.
+ *
+ * @see http://jsperf.com/key-exists
+ * @see http://jsperf.com/key-missing
+ */
+var DOMProperty = {
+
+  ID_ATTRIBUTE_NAME: 'data-reactid',
+
+  /**
+   * Checks whether a property name is a standard property.
+   * @type {Object}
+   */
+  isStandardName: {},
+
+  /**
+   * Mapping from lowercase property names to the properly cased version, used
+   * to warn in the case of missing properties.
+   * @type {Object}
+   */
+  getPossibleStandardName: {},
+
+  /**
+   * Mapping from normalized names to attribute names that differ. Attribute
+   * names are used when rendering markup or with `*Attribute()`.
+   * @type {Object}
+   */
+  getAttributeName: {},
+
+  /**
+   * Mapping from normalized names to properties on DOM node instances.
+   * (This includes properties that mutate due to external factors.)
+   * @type {Object}
+   */
+  getPropertyName: {},
+
+  /**
+   * Mapping from normalized names to mutation methods. This will only exist if
+   * mutation cannot be set simply by the property or `setAttribute()`.
+   * @type {Object}
+   */
+  getMutationMethod: {},
+
+  /**
+   * Whether the property must be accessed and mutated as an object property.
+   * @type {Object}
+   */
+  mustUseAttribute: {},
+
+  /**
+   * Whether the property must be accessed and mutated using `*Attribute()`.
+   * (This includes anything that fails `<propName> in <element>`.)
+   * @type {Object}
+   */
+  mustUseProperty: {},
+
+  /**
+   * Whether or not setting a value causes side effects such as triggering
+   * resources to be loaded or text selection changes. We must ensure that
+   * the value is only set if it has changed.
+   * @type {Object}
+   */
+  hasSideEffects: {},
+
+  /**
+   * Whether the property should be removed when set to a falsey value.
+   * @type {Object}
+   */
+  hasBooleanValue: {},
+
+  /**
+   * Whether the property must be numeric or parse as a
+   * numeric and should be removed when set to a falsey value.
+   * @type {Object}
+   */
+  hasNumericValue: {},
+
+  /**
+   * Whether the property must be positive numeric or parse as a positive
+   * numeric and should be removed when set to a falsey value.
+   * @type {Object}
+   */
+  hasPositiveNumericValue: {},
+
+  /**
+   * Whether the property can be used as a flag as well as with a value. Removed
+   * when strictly equal to false; present without a value when strictly equal
+   * to true; present with a value otherwise.
+   * @type {Object}
+   */
+  hasOverloadedBooleanValue: {},
+
+  /**
+   * All of the isCustomAttribute() functions that have been injected.
+   */
+  _isCustomAttributeFunctions: [],
+
+  /**
+   * Checks whether a property name is a custom attribute.
+   * @method
+   */
+  isCustomAttribute: function(attributeName) {
+    for (var i = 0; i < DOMProperty._isCustomAttributeFunctions.length; i++) {
+      var isCustomAttributeFn = DOMProperty._isCustomAttributeFunctions[i];
+      if (isCustomAttributeFn(attributeName)) {
+        return true;
+      }
+    }
+    return false;
+  },
+
+  /**
+   * Returns the default property value for a DOM property (i.e., not an
+   * attribute). Most default values are '' or false, but not all. Worse yet,
+   * some (in particular, `type`) vary depending on the type of element.
+   *
+   * TODO: Is it better to grab all the possible properties when creating an
+   * element to avoid having to create the same element twice?
+   */
+  getDefaultValueForProperty: function(nodeName, prop) {
+    var nodeDefaults = defaultValueCache[nodeName];
+    var testElement;
+    if (!nodeDefaults) {
+      defaultValueCache[nodeName] = nodeDefaults = {};
+    }
+    if (!(prop in nodeDefaults)) {
+      testElement = document.createElement(nodeName);
+      nodeDefaults[prop] = testElement[prop];
+    }
+    return nodeDefaults[prop];
+  },
+
+  injection: DOMPropertyInjection
+};
+
+module.exports = DOMProperty;
+
+},{ "./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SVGDOMPropertyConfig.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule SVGDOMPropertyConfig
+ */
+
+/*jslint bitwise: true*/
+
+'use strict';
+
+var DOMProperty = require("./DOMProperty");
+
+var MUST_USE_ATTRIBUTE = DOMProperty.injection.MUST_USE_ATTRIBUTE;
+
+var SVGDOMPropertyConfig = {
+  Properties: {
+    clipPath: MUST_USE_ATTRIBUTE,
+    cx: MUST_USE_ATTRIBUTE,
+    cy: MUST_USE_ATTRIBUTE,
+    d: MUST_USE_ATTRIBUTE,
+    dx: MUST_USE_ATTRIBUTE,
+    dy: MUST_USE_ATTRIBUTE,
+    fill: MUST_USE_ATTRIBUTE,
+    fillOpacity: MUST_USE_ATTRIBUTE,
+    fontFamily: MUST_USE_ATTRIBUTE,
+    fontSize: MUST_USE_ATTRIBUTE,
+    fx: MUST_USE_ATTRIBUTE,
+    fy: MUST_USE_ATTRIBUTE,
+    gradientTransform: MUST_USE_ATTRIBUTE,
+    gradientUnits: MUST_USE_ATTRIBUTE,
+    markerEnd: MUST_USE_ATTRIBUTE,
+    markerMid: MUST_USE_ATTRIBUTE,
+    markerStart: MUST_USE_ATTRIBUTE,
+    offset: MUST_USE_ATTRIBUTE,
+    opacity: MUST_USE_ATTRIBUTE,
+    patternContentUnits: MUST_USE_ATTRIBUTE,
+    patternUnits: MUST_USE_ATTRIBUTE,
+    points: MUST_USE_ATTRIBUTE,
+    preserveAspectRatio: MUST_USE_ATTRIBUTE,
+    r: MUST_USE_ATTRIBUTE,
+    rx: MUST_USE_ATTRIBUTE,
+    ry: MUST_USE_ATTRIBUTE,
+    spreadMethod: MUST_USE_ATTRIBUTE,
+    stopColor: MUST_USE_ATTRIBUTE,
+    stopOpacity: MUST_USE_ATTRIBUTE,
+    stroke: MUST_USE_ATTRIBUTE,
+    strokeDasharray: MUST_USE_ATTRIBUTE,
+    strokeLinecap: MUST_USE_ATTRIBUTE,
+    strokeOpacity: MUST_USE_ATTRIBUTE,
+    strokeWidth: MUST_USE_ATTRIBUTE,
+    textAnchor: MUST_USE_ATTRIBUTE,
+    transform: MUST_USE_ATTRIBUTE,
+    version: MUST_USE_ATTRIBUTE,
+    viewBox: MUST_USE_ATTRIBUTE,
+    x1: MUST_USE_ATTRIBUTE,
+    x2: MUST_USE_ATTRIBUTE,
+    x: MUST_USE_ATTRIBUTE,
+    y1: MUST_USE_ATTRIBUTE,
+    y2: MUST_USE_ATTRIBUTE,
+    y: MUST_USE_ATTRIBUTE
+  },
+  DOMAttributeNames: {
+    clipPath: 'clip-path',
+    fillOpacity: 'fill-opacity',
+    fontFamily: 'font-family',
+    fontSize: 'font-size',
+    gradientTransform: 'gradientTransform',
+    gradientUnits: 'gradientUnits',
+    markerEnd: 'marker-end',
+    markerMid: 'marker-mid',
+    markerStart: 'marker-start',
+    patternContentUnits: 'patternContentUnits',
+    patternUnits: 'patternUnits',
+    preserveAspectRatio: 'preserveAspectRatio',
+    spreadMethod: 'spreadMethod',
+    stopColor: 'stop-color',
+    stopOpacity: 'stop-opacity',
+    strokeDasharray: 'stroke-dasharray',
+    strokeLinecap: 'stroke-linecap',
+    strokeOpacity: 'stroke-opacity',
+    strokeWidth: 'stroke-width',
+    textAnchor: 'text-anchor',
+    viewBox: 'viewBox'
+  }
+};
+
+module.exports = SVGDOMPropertyConfig;
+
+},{ "./DOMProperty":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMProperty.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactEmptyComponent.js":[function(require,module,exports){
+/**
+ * Copyright 2014-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactEmptyComponent
  */
 
 'use strict';
 
-var CallbackQueue = require("./CallbackQueue");
-var PooledClass = require("./PooledClass");
-var ReactBrowserEventEmitter = require("./ReactBrowserEventEmitter");
-var ReactInputSelection = require("./ReactInputSelection");
-var ReactPutListenerQueue = require("./ReactPutListenerQueue");
-var Transaction = require("./Transaction");
+var ReactElement = require("./ReactElement");
+var ReactInstanceMap = require("./ReactInstanceMap");
 
-var assign = require("./Object.assign");
+var invariant = require("./invariant");
 
-/**
- * Ensures that, when possible, the selection range (currently selected text
- * input) is not disturbed by performing the transaction.
- */
-var SELECTION_RESTORATION = {
-  /**
-   * @return {Selection} Selection information.
-   */
-  initialize: ReactInputSelection.getSelectionInformation,
-  /**
-   * @param {Selection} sel Selection information returned from `initialize`.
-   */
-  close: ReactInputSelection.restoreSelection
-};
+var component;
+// This registry keeps track of the React IDs of the components that rendered to
+// `null` (in reality a placeholder such as `noscript`)
+var nullComponentIDsRegistry = {};
 
-/**
- * Suppresses events (blur/focus) that could be inadvertently dispatched due to
- * high level DOM manipulations (like temporarily removing a text input from the
- * DOM).
- */
-var EVENT_SUPPRESSION = {
-  /**
-   * @return {boolean} The enabled status of `ReactBrowserEventEmitter` before
-   * the reconciliation.
-   */
-  initialize: function() {
-    var currentlyEnabled = ReactBrowserEventEmitter.isEnabled();
-    ReactBrowserEventEmitter.setEnabled(false);
-    return currentlyEnabled;
-  },
-
-  /**
-   * @param {boolean} previouslyEnabled Enabled status of
-   *   `ReactBrowserEventEmitter` before the reconciliation occured. `close`
-   *   restores the previous value.
-   */
-  close: function(previouslyEnabled) {
-    ReactBrowserEventEmitter.setEnabled(previouslyEnabled);
+var ReactEmptyComponentInjection = {
+  injectEmptyComponent: function(emptyComponent) {
+    component = ReactElement.createFactory(emptyComponent);
   }
 };
 
-/**
- * Provides a queue for collecting `componentDidMount` and
- * `componentDidUpdate` callbacks during the the transaction.
- */
-var ON_DOM_READY_QUEUEING = {
-  /**
-   * Initializes the internal `onDOMReady` queue.
-   */
-  initialize: function() {
-    this.reactMountReady.reset();
-  },
-
-  /**
-   * After DOM is flushed, invoke all registered `onDOMReady` callbacks.
-   */
-  close: function() {
-    this.reactMountReady.notifyAll();
+var ReactEmptyComponentType = function() {};
+ReactEmptyComponentType.prototype.componentDidMount = function() {
+  var internalInstance = ReactInstanceMap.get(this);
+  // TODO: Make sure we run these methods in the correct order, we shouldn't
+  // need this check. We're going to assume if we're here it means we ran
+  // componentWillUnmount already so there is no internal instance (it gets
+  // removed as part of the unmounting process).
+  if (!internalInstance) {
+    return;
   }
+  registerNullComponentID(internalInstance._rootNodeID);
+};
+ReactEmptyComponentType.prototype.componentWillUnmount = function() {
+  var internalInstance = ReactInstanceMap.get(this);
+  // TODO: Get rid of this check. See TODO in componentDidMount.
+  if (!internalInstance) {
+    return;
+  }
+  deregisterNullComponentID(internalInstance._rootNodeID);
+};
+ReactEmptyComponentType.prototype.render = function() {
+  ("production" !== process.env.NODE_ENV ? invariant(
+    component,
+    'Trying to return null from a render, but no null placeholder component ' +
+    'was injected.'
+  ) : invariant(component));
+  return component();
 };
 
-var PUT_LISTENER_QUEUEING = {
-  initialize: function() {
-    this.putListenerQueue.reset();
-  },
-
-  close: function() {
-    this.putListenerQueue.putListeners();
-  }
-};
+var emptyElement = ReactElement.createElement(ReactEmptyComponentType);
 
 /**
- * Executed within the scope of the `Transaction` instance. Consider these as
- * being member methods, but with an implied ordering while being isolated from
- * each other.
+ * Mark the component as having rendered to null.
+ * @param {string} id Component's `_rootNodeID`.
  */
-var TRANSACTION_WRAPPERS = [
-  PUT_LISTENER_QUEUEING,
-  SELECTION_RESTORATION,
-  EVENT_SUPPRESSION,
-  ON_DOM_READY_QUEUEING
-];
-
-/**
- * Currently:
- * - The order that these are listed in the transaction is critical:
- * - Suppresses events.
- * - Restores selection range.
- *
- * Future:
- * - Restore document/overflow scroll positions that were unintentionally
- *   modified via DOM insertions above the top viewport boundary.
- * - Implement/integrate with customized constraint based layout system and keep
- *   track of which dimensions must be remeasured.
- *
- * @class ReactReconcileTransaction
- */
-function ReactReconcileTransaction() {
-  this.reinitializeTransaction();
-  // Only server-side rendering really needs this option (see
-  // `ReactServerRendering`), but server-side uses
-  // `ReactServerRenderingTransaction` instead. This option is here so that it's
-  // accessible and defaults to false when `ReactDOMComponent` and
-  // `ReactTextComponent` checks it in `mountComponent`.`
-  this.renderToStaticMarkup = false;
-  this.reactMountReady = CallbackQueue.getPooled(null);
-  this.putListenerQueue = ReactPutListenerQueue.getPooled();
+function registerNullComponentID(id) {
+  nullComponentIDsRegistry[id] = true;
 }
 
-var Mixin = {
+/**
+ * Unmark the component as having rendered to null: it renders to something now.
+ * @param {string} id Component's `_rootNodeID`.
+ */
+function deregisterNullComponentID(id) {
+  delete nullComponentIDsRegistry[id];
+}
+
+/**
+ * @param {string} id Component's `_rootNodeID`.
+ * @return {boolean} True if the component is rendered to null.
+ */
+function isNullComponentID(id) {
+  return !!nullComponentIDsRegistry[id];
+}
+
+var ReactEmptyComponent = {
+  emptyElement: emptyElement,
+  injection: ReactEmptyComponentInjection,
+  isNullComponentID: isNullComponentID
+};
+
+module.exports = ReactEmptyComponent;
+
+},{ "./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactInstanceMap":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInstanceMap.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/createFullPageComponent.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule createFullPageComponent
+ * @typechecks
+ */
+
+'use strict';
+
+// Defeat circular references by requiring this directly.
+var ReactClass = require("./ReactClass");
+var ReactElement = require("./ReactElement");
+
+var invariant = require("./invariant");
+
+/**
+ * Create a component that will throw an exception when unmounted.
+ *
+ * Components like <html> <head> and <body> can't be removed or added
+ * easily in a cross-browser way, however it's valuable to be able to
+ * take advantage of React's reconciliation for styling and <title>
+ * management. So we just document it and throw in dangerous cases.
+ *
+ * @param {string} tag The tag to wrap
+ * @return {function} convenience constructor of new component
+ */
+function createFullPageComponent(tag) {
+  var elementFactory = ReactElement.createFactory(tag);
+
+  var FullPageComponent = ReactClass.createClass({
+    tagName: tag.toUpperCase(),
+    displayName: 'ReactFullPageComponent' + tag,
+
+    componentWillUnmount: function() {
+      ("production" !== process.env.NODE_ENV ? invariant(
+        false,
+        '%s tried to unmount. Because of cross-browser quirks it is ' +
+        'impossible to unmount some top-level components (eg <html>, <head>, ' +
+        'and <body>) reliably and efficiently. To fix this, have a single ' +
+        'top-level component that never unmounts render these elements.',
+        this.constructor.displayName
+      ) : invariant(false));
+    },
+
+    render: function() {
+      return elementFactory(this.props);
+    }
+  });
+
+  return FullPageComponent;
+}
+
+module.exports = createFullPageComponent;
+
+},{ "./ReactClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactClass.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMarkupChecksum.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactMarkupChecksum
+ */
+
+'use strict';
+
+var adler32 = require("./adler32");
+
+var ReactMarkupChecksum = {
+  CHECKSUM_ATTR_NAME: 'data-react-checksum',
+
   /**
-   * @see Transaction
-   * @abstract
-   * @final
-   * @return {array<object>} List of operation wrap proceedures.
-   *   TODO: convert to array<TransactionWrapper>
+   * @param {string} markup Markup string
+   * @return {string} Markup string with checksum attribute attached
    */
-  getTransactionWrappers: function() {
-    return TRANSACTION_WRAPPERS;
+  addChecksumToMarkup: function(markup) {
+    var checksum = adler32(markup);
+    return markup.replace(
+      '>',
+      ' ' + ReactMarkupChecksum.CHECKSUM_ATTR_NAME + '="' + checksum + '">'
+    );
   },
 
   /**
-   * @return {object} The queue to collect `onDOMReady` callbacks with.
+   * @param {string} markup to use
+   * @param {DOMElement} element root React element
+   * @returns {boolean} whether or not the markup is the same
    */
-  getReactMountReady: function() {
-    return this.reactMountReady;
-  },
-
-  getPutListenerQueue: function() {
-    return this.putListenerQueue;
-  },
-
-  /**
-   * `PooledClass` looks for this, and will invoke this before allowing this
-   * instance to be resused.
-   */
-  destructor: function() {
-    CallbackQueue.release(this.reactMountReady);
-    this.reactMountReady = null;
-
-    ReactPutListenerQueue.release(this.putListenerQueue);
-    this.putListenerQueue = null;
+  canReuseMarkup: function(markup, element) {
+    var existingChecksum = element.getAttribute(
+      ReactMarkupChecksum.CHECKSUM_ATTR_NAME
+    );
+    existingChecksum = existingChecksum && parseInt(existingChecksum, 10);
+    var markupChecksum = adler32(markup);
+    return markupChecksum === existingChecksum;
   }
 };
 
+module.exports = ReactMarkupChecksum;
 
-assign(ReactReconcileTransaction.prototype, Transaction.Mixin, Mixin);
-
-PooledClass.addPoolingTo(ReactReconcileTransaction);
-
-module.exports = ReactReconcileTransaction;
-
-},{ "./CallbackQueue":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/CallbackQueue.js","./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./PooledClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/PooledClass.js","./ReactBrowserEventEmitter":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserEventEmitter.js","./ReactInputSelection":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInputSelection.js","./ReactPutListenerQueue":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPutListenerQueue.js","./Transaction":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Transaction.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDefaultPerf.js":[function(require,module,exports){
+},{ "./adler32":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/adler32.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDefaultPerf.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -43998,161 +44590,7 @@ var ReactDefaultPerf = {
 
 module.exports = ReactDefaultPerf;
 
-},{ "./DOMProperty":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMProperty.js","./ReactDefaultPerfAnalysis":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDefaultPerfAnalysis.js","./ReactMount":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMount.js","./ReactPerf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPerf.js","./performanceNow":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/performanceNow.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/createFullPageComponent.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule createFullPageComponent
- * @typechecks
- */
-
-'use strict';
-
-// Defeat circular references by requiring this directly.
-var ReactClass = require("./ReactClass");
-var ReactElement = require("./ReactElement");
-
-var invariant = require("./invariant");
-
-/**
- * Create a component that will throw an exception when unmounted.
- *
- * Components like <html> <head> and <body> can't be removed or added
- * easily in a cross-browser way, however it's valuable to be able to
- * take advantage of React's reconciliation for styling and <title>
- * management. So we just document it and throw in dangerous cases.
- *
- * @param {string} tag The tag to wrap
- * @return {function} convenience constructor of new component
- */
-function createFullPageComponent(tag) {
-  var elementFactory = ReactElement.createFactory(tag);
-
-  var FullPageComponent = ReactClass.createClass({
-    tagName: tag.toUpperCase(),
-    displayName: 'ReactFullPageComponent' + tag,
-
-    componentWillUnmount: function() {
-      ("production" !== process.env.NODE_ENV ? invariant(
-        false,
-        '%s tried to unmount. Because of cross-browser quirks it is ' +
-        'impossible to unmount some top-level components (eg <html>, <head>, ' +
-        'and <body>) reliably and efficiently. To fix this, have a single ' +
-        'top-level component that never unmounts render these elements.',
-        this.constructor.displayName
-      ) : invariant(false));
-    },
-
-    render: function() {
-      return elementFactory(this.props);
-    }
-  });
-
-  return FullPageComponent;
-}
-
-module.exports = createFullPageComponent;
-
-},{ "./ReactClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactClass.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SVGDOMPropertyConfig.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule SVGDOMPropertyConfig
- */
-
-/*jslint bitwise: true*/
-
-'use strict';
-
-var DOMProperty = require("./DOMProperty");
-
-var MUST_USE_ATTRIBUTE = DOMProperty.injection.MUST_USE_ATTRIBUTE;
-
-var SVGDOMPropertyConfig = {
-  Properties: {
-    clipPath: MUST_USE_ATTRIBUTE,
-    cx: MUST_USE_ATTRIBUTE,
-    cy: MUST_USE_ATTRIBUTE,
-    d: MUST_USE_ATTRIBUTE,
-    dx: MUST_USE_ATTRIBUTE,
-    dy: MUST_USE_ATTRIBUTE,
-    fill: MUST_USE_ATTRIBUTE,
-    fillOpacity: MUST_USE_ATTRIBUTE,
-    fontFamily: MUST_USE_ATTRIBUTE,
-    fontSize: MUST_USE_ATTRIBUTE,
-    fx: MUST_USE_ATTRIBUTE,
-    fy: MUST_USE_ATTRIBUTE,
-    gradientTransform: MUST_USE_ATTRIBUTE,
-    gradientUnits: MUST_USE_ATTRIBUTE,
-    markerEnd: MUST_USE_ATTRIBUTE,
-    markerMid: MUST_USE_ATTRIBUTE,
-    markerStart: MUST_USE_ATTRIBUTE,
-    offset: MUST_USE_ATTRIBUTE,
-    opacity: MUST_USE_ATTRIBUTE,
-    patternContentUnits: MUST_USE_ATTRIBUTE,
-    patternUnits: MUST_USE_ATTRIBUTE,
-    points: MUST_USE_ATTRIBUTE,
-    preserveAspectRatio: MUST_USE_ATTRIBUTE,
-    r: MUST_USE_ATTRIBUTE,
-    rx: MUST_USE_ATTRIBUTE,
-    ry: MUST_USE_ATTRIBUTE,
-    spreadMethod: MUST_USE_ATTRIBUTE,
-    stopColor: MUST_USE_ATTRIBUTE,
-    stopOpacity: MUST_USE_ATTRIBUTE,
-    stroke: MUST_USE_ATTRIBUTE,
-    strokeDasharray: MUST_USE_ATTRIBUTE,
-    strokeLinecap: MUST_USE_ATTRIBUTE,
-    strokeOpacity: MUST_USE_ATTRIBUTE,
-    strokeWidth: MUST_USE_ATTRIBUTE,
-    textAnchor: MUST_USE_ATTRIBUTE,
-    transform: MUST_USE_ATTRIBUTE,
-    version: MUST_USE_ATTRIBUTE,
-    viewBox: MUST_USE_ATTRIBUTE,
-    x1: MUST_USE_ATTRIBUTE,
-    x2: MUST_USE_ATTRIBUTE,
-    x: MUST_USE_ATTRIBUTE,
-    y1: MUST_USE_ATTRIBUTE,
-    y2: MUST_USE_ATTRIBUTE,
-    y: MUST_USE_ATTRIBUTE
-  },
-  DOMAttributeNames: {
-    clipPath: 'clip-path',
-    fillOpacity: 'fill-opacity',
-    fontFamily: 'font-family',
-    fontSize: 'font-size',
-    gradientTransform: 'gradientTransform',
-    gradientUnits: 'gradientUnits',
-    markerEnd: 'marker-end',
-    markerMid: 'marker-mid',
-    markerStart: 'marker-start',
-    patternContentUnits: 'patternContentUnits',
-    patternUnits: 'patternUnits',
-    preserveAspectRatio: 'preserveAspectRatio',
-    spreadMethod: 'spreadMethod',
-    stopColor: 'stop-color',
-    stopOpacity: 'stop-opacity',
-    strokeDasharray: 'stroke-dasharray',
-    strokeLinecap: 'stroke-linecap',
-    strokeOpacity: 'stroke-opacity',
-    strokeWidth: 'stroke-width',
-    textAnchor: 'text-anchor',
-    viewBox: 'viewBox'
-  }
-};
-
-module.exports = SVGDOMPropertyConfig;
-
-},{ "./DOMProperty":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMProperty.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserEventEmitter.js":[function(require,module,exports){
+},{ "./DOMProperty":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMProperty.js","./ReactDefaultPerfAnalysis":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDefaultPerfAnalysis.js","./ReactMount":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMount.js","./ReactPerf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPerf.js","./performanceNow":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/performanceNow.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserEventEmitter.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -44505,100 +44943,7 @@ var ReactBrowserEventEmitter = assign({}, ReactEventEmitterMixin, {
 
 module.exports = ReactBrowserEventEmitter;
 
-},{ "./EventConstants":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventConstants.js","./EventPluginHub":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPluginHub.js","./EventPluginRegistry":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPluginRegistry.js","./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./ReactEventEmitterMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactEventEmitterMixin.js","./ViewportMetrics":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ViewportMetrics.js","./isEventSupported":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/isEventSupported.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactEmptyComponent.js":[function(require,module,exports){
-/**
- * Copyright 2014-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule ReactEmptyComponent
- */
-
-'use strict';
-
-var ReactElement = require("./ReactElement");
-var ReactInstanceMap = require("./ReactInstanceMap");
-
-var invariant = require("./invariant");
-
-var component;
-// This registry keeps track of the React IDs of the components that rendered to
-// `null` (in reality a placeholder such as `noscript`)
-var nullComponentIDsRegistry = {};
-
-var ReactEmptyComponentInjection = {
-  injectEmptyComponent: function(emptyComponent) {
-    component = ReactElement.createFactory(emptyComponent);
-  }
-};
-
-var ReactEmptyComponentType = function() {};
-ReactEmptyComponentType.prototype.componentDidMount = function() {
-  var internalInstance = ReactInstanceMap.get(this);
-  // TODO: Make sure we run these methods in the correct order, we shouldn't
-  // need this check. We're going to assume if we're here it means we ran
-  // componentWillUnmount already so there is no internal instance (it gets
-  // removed as part of the unmounting process).
-  if (!internalInstance) {
-    return;
-  }
-  registerNullComponentID(internalInstance._rootNodeID);
-};
-ReactEmptyComponentType.prototype.componentWillUnmount = function() {
-  var internalInstance = ReactInstanceMap.get(this);
-  // TODO: Get rid of this check. See TODO in componentDidMount.
-  if (!internalInstance) {
-    return;
-  }
-  deregisterNullComponentID(internalInstance._rootNodeID);
-};
-ReactEmptyComponentType.prototype.render = function() {
-  ("production" !== process.env.NODE_ENV ? invariant(
-    component,
-    'Trying to return null from a render, but no null placeholder component ' +
-    'was injected.'
-  ) : invariant(component));
-  return component();
-};
-
-var emptyElement = ReactElement.createElement(ReactEmptyComponentType);
-
-/**
- * Mark the component as having rendered to null.
- * @param {string} id Component's `_rootNodeID`.
- */
-function registerNullComponentID(id) {
-  nullComponentIDsRegistry[id] = true;
-}
-
-/**
- * Unmark the component as having rendered to null: it renders to something now.
- * @param {string} id Component's `_rootNodeID`.
- */
-function deregisterNullComponentID(id) {
-  delete nullComponentIDsRegistry[id];
-}
-
-/**
- * @param {string} id Component's `_rootNodeID`.
- * @return {boolean} True if the component is rendered to null.
- */
-function isNullComponentID(id) {
-  return !!nullComponentIDsRegistry[id];
-}
-
-var ReactEmptyComponent = {
-  emptyElement: emptyElement,
-  injection: ReactEmptyComponentInjection,
-  isNullComponentID: isNullComponentID
-};
-
-module.exports = ReactEmptyComponent;
-
-},{ "./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactInstanceMap":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInstanceMap.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMProperty.js":[function(require,module,exports){
+},{ "./EventConstants":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventConstants.js","./EventPluginHub":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPluginHub.js","./EventPluginRegistry":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPluginRegistry.js","./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./ReactEventEmitterMixin":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactEventEmitterMixin.js","./ViewportMetrics":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ViewportMetrics.js","./isEventSupported":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/isEventSupported.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/instantiateReactComponent.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -44607,339 +44952,134 @@ module.exports = ReactEmptyComponent;
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
  *
- * @providesModule DOMProperty
+ * @providesModule instantiateReactComponent
  * @typechecks static-only
  */
 
-/*jslint bitwise: true */
-
 'use strict';
 
+var ReactCompositeComponent = require("./ReactCompositeComponent");
+var ReactEmptyComponent = require("./ReactEmptyComponent");
+var ReactNativeComponent = require("./ReactNativeComponent");
+
+var assign = require("./Object.assign");
 var invariant = require("./invariant");
+var warning = require("./warning");
 
-function checkMask(value, bitmask) {
-  return (value & bitmask) === bitmask;
+// To avoid a cyclic dependency, we create the final class in this module
+var ReactCompositeComponentWrapper = function() { };
+assign(
+  ReactCompositeComponentWrapper.prototype,
+  ReactCompositeComponent.Mixin,
+  {
+    _instantiateReactComponent: instantiateReactComponent
+  }
+);
+
+/**
+ * Check if the type reference is a known internal type. I.e. not a user
+ * provided composite type.
+ *
+ * @param {function} type
+ * @return {boolean} Returns true if this is a valid internal type.
+ */
+function isInternalComponentType(type) {
+  return (
+    typeof type === 'function' &&
+    typeof type.prototype !== 'undefined' &&
+    typeof type.prototype.mountComponent === 'function' &&
+    typeof type.prototype.receiveComponent === 'function'
+  );
 }
 
-var DOMPropertyInjection = {
-  /**
-   * Mapping from normalized, camelcased property names to a configuration that
-   * specifies how the associated DOM property should be accessed or rendered.
-   */
-  MUST_USE_ATTRIBUTE: 0x1,
-  MUST_USE_PROPERTY: 0x2,
-  HAS_SIDE_EFFECTS: 0x4,
-  HAS_BOOLEAN_VALUE: 0x8,
-  HAS_NUMERIC_VALUE: 0x10,
-  HAS_POSITIVE_NUMERIC_VALUE: 0x20 | 0x10,
-  HAS_OVERLOADED_BOOLEAN_VALUE: 0x40,
+/**
+ * Given a ReactNode, create an instance that will actually be mounted.
+ *
+ * @param {ReactNode} node
+ * @param {*} parentCompositeType The composite type that resolved this.
+ * @return {object} A new instance of the element's constructor.
+ * @protected
+ */
+function instantiateReactComponent(node, parentCompositeType) {
+  var instance;
 
-  /**
-   * Inject some specialized knowledge about the DOM. This takes a config object
-   * with the following properties:
-   *
-   * isCustomAttribute: function that given an attribute name will return true
-   * if it can be inserted into the DOM verbatim. Useful for data-* or aria-*
-   * attributes where it's impossible to enumerate all of the possible
-   * attribute names,
-   *
-   * Properties: object mapping DOM property name to one of the
-   * DOMPropertyInjection constants or null. If your attribute isn't in here,
-   * it won't get written to the DOM.
-   *
-   * DOMAttributeNames: object mapping React attribute name to the DOM
-   * attribute name. Attribute names not specified use the **lowercase**
-   * normalized name.
-   *
-   * DOMPropertyNames: similar to DOMAttributeNames but for DOM properties.
-   * Property names not specified use the normalized name.
-   *
-   * DOMMutationMethods: Properties that require special mutation methods. If
-   * `value` is undefined, the mutation method should unset the property.
-   *
-   * @param {object} domPropertyConfig the config as described above.
-   */
-  injectDOMPropertyConfig: function(domPropertyConfig) {
-    var Properties = domPropertyConfig.Properties || {};
-    var DOMAttributeNames = domPropertyConfig.DOMAttributeNames || {};
-    var DOMPropertyNames = domPropertyConfig.DOMPropertyNames || {};
-    var DOMMutationMethods = domPropertyConfig.DOMMutationMethods || {};
-
-    if (domPropertyConfig.isCustomAttribute) {
-      DOMProperty._isCustomAttributeFunctions.push(
-        domPropertyConfig.isCustomAttribute
-      );
-    }
-
-    for (var propName in Properties) {
-      ("production" !== process.env.NODE_ENV ? invariant(
-        !DOMProperty.isStandardName.hasOwnProperty(propName),
-        'injectDOMPropertyConfig(...): You\'re trying to inject DOM property ' +
-        '\'%s\' which has already been injected. You may be accidentally ' +
-        'injecting the same DOM property config twice, or you may be ' +
-        'injecting two configs that have conflicting property names.',
-        propName
-      ) : invariant(!DOMProperty.isStandardName.hasOwnProperty(propName)));
-
-      DOMProperty.isStandardName[propName] = true;
-
-      var lowerCased = propName.toLowerCase();
-      DOMProperty.getPossibleStandardName[lowerCased] = propName;
-
-      if (DOMAttributeNames.hasOwnProperty(propName)) {
-        var attributeName = DOMAttributeNames[propName];
-        DOMProperty.getPossibleStandardName[attributeName] = propName;
-        DOMProperty.getAttributeName[propName] = attributeName;
-      } else {
-        DOMProperty.getAttributeName[propName] = lowerCased;
-      }
-
-      DOMProperty.getPropertyName[propName] =
-        DOMPropertyNames.hasOwnProperty(propName) ?
-          DOMPropertyNames[propName] :
-          propName;
-
-      if (DOMMutationMethods.hasOwnProperty(propName)) {
-        DOMProperty.getMutationMethod[propName] = DOMMutationMethods[propName];
-      } else {
-        DOMProperty.getMutationMethod[propName] = null;
-      }
-
-      var propConfig = Properties[propName];
-      DOMProperty.mustUseAttribute[propName] =
-        checkMask(propConfig, DOMPropertyInjection.MUST_USE_ATTRIBUTE);
-      DOMProperty.mustUseProperty[propName] =
-        checkMask(propConfig, DOMPropertyInjection.MUST_USE_PROPERTY);
-      DOMProperty.hasSideEffects[propName] =
-        checkMask(propConfig, DOMPropertyInjection.HAS_SIDE_EFFECTS);
-      DOMProperty.hasBooleanValue[propName] =
-        checkMask(propConfig, DOMPropertyInjection.HAS_BOOLEAN_VALUE);
-      DOMProperty.hasNumericValue[propName] =
-        checkMask(propConfig, DOMPropertyInjection.HAS_NUMERIC_VALUE);
-      DOMProperty.hasPositiveNumericValue[propName] =
-        checkMask(propConfig, DOMPropertyInjection.HAS_POSITIVE_NUMERIC_VALUE);
-      DOMProperty.hasOverloadedBooleanValue[propName] =
-        checkMask(propConfig, DOMPropertyInjection.HAS_OVERLOADED_BOOLEAN_VALUE);
-
-      ("production" !== process.env.NODE_ENV ? invariant(
-        !DOMProperty.mustUseAttribute[propName] ||
-          !DOMProperty.mustUseProperty[propName],
-        'DOMProperty: Cannot require using both attribute and property: %s',
-        propName
-      ) : invariant(!DOMProperty.mustUseAttribute[propName] ||
-        !DOMProperty.mustUseProperty[propName]));
-      ("production" !== process.env.NODE_ENV ? invariant(
-        DOMProperty.mustUseProperty[propName] ||
-          !DOMProperty.hasSideEffects[propName],
-        'DOMProperty: Properties that have side effects must use property: %s',
-        propName
-      ) : invariant(DOMProperty.mustUseProperty[propName] ||
-        !DOMProperty.hasSideEffects[propName]));
-      ("production" !== process.env.NODE_ENV ? invariant(
-        !!DOMProperty.hasBooleanValue[propName] +
-          !!DOMProperty.hasNumericValue[propName] +
-          !!DOMProperty.hasOverloadedBooleanValue[propName] <= 1,
-        'DOMProperty: Value can be one of boolean, overloaded boolean, or ' +
-        'numeric value, but not a combination: %s',
-        propName
-      ) : invariant(!!DOMProperty.hasBooleanValue[propName] +
-        !!DOMProperty.hasNumericValue[propName] +
-        !!DOMProperty.hasOverloadedBooleanValue[propName] <= 1));
-    }
+  if (node === null || node === false) {
+    node = ReactEmptyComponent.emptyElement;
   }
-};
-var defaultValueCache = {};
 
-/**
- * DOMProperty exports lookup objects that can be used like functions:
- *
- *   > DOMProperty.isValid['id']
- *   true
- *   > DOMProperty.isValid['foobar']
- *   undefined
- *
- * Although this may be confusing, it performs better in general.
- *
- * @see http://jsperf.com/key-exists
- * @see http://jsperf.com/key-missing
- */
-var DOMProperty = {
-
-  ID_ATTRIBUTE_NAME: 'data-reactid',
-
-  /**
-   * Checks whether a property name is a standard property.
-   * @type {Object}
-   */
-  isStandardName: {},
-
-  /**
-   * Mapping from lowercase property names to the properly cased version, used
-   * to warn in the case of missing properties.
-   * @type {Object}
-   */
-  getPossibleStandardName: {},
-
-  /**
-   * Mapping from normalized names to attribute names that differ. Attribute
-   * names are used when rendering markup or with `*Attribute()`.
-   * @type {Object}
-   */
-  getAttributeName: {},
-
-  /**
-   * Mapping from normalized names to properties on DOM node instances.
-   * (This includes properties that mutate due to external factors.)
-   * @type {Object}
-   */
-  getPropertyName: {},
-
-  /**
-   * Mapping from normalized names to mutation methods. This will only exist if
-   * mutation cannot be set simply by the property or `setAttribute()`.
-   * @type {Object}
-   */
-  getMutationMethod: {},
-
-  /**
-   * Whether the property must be accessed and mutated as an object property.
-   * @type {Object}
-   */
-  mustUseAttribute: {},
-
-  /**
-   * Whether the property must be accessed and mutated using `*Attribute()`.
-   * (This includes anything that fails `<propName> in <element>`.)
-   * @type {Object}
-   */
-  mustUseProperty: {},
-
-  /**
-   * Whether or not setting a value causes side effects such as triggering
-   * resources to be loaded or text selection changes. We must ensure that
-   * the value is only set if it has changed.
-   * @type {Object}
-   */
-  hasSideEffects: {},
-
-  /**
-   * Whether the property should be removed when set to a falsey value.
-   * @type {Object}
-   */
-  hasBooleanValue: {},
-
-  /**
-   * Whether the property must be numeric or parse as a
-   * numeric and should be removed when set to a falsey value.
-   * @type {Object}
-   */
-  hasNumericValue: {},
-
-  /**
-   * Whether the property must be positive numeric or parse as a positive
-   * numeric and should be removed when set to a falsey value.
-   * @type {Object}
-   */
-  hasPositiveNumericValue: {},
-
-  /**
-   * Whether the property can be used as a flag as well as with a value. Removed
-   * when strictly equal to false; present without a value when strictly equal
-   * to true; present with a value otherwise.
-   * @type {Object}
-   */
-  hasOverloadedBooleanValue: {},
-
-  /**
-   * All of the isCustomAttribute() functions that have been injected.
-   */
-  _isCustomAttributeFunctions: [],
-
-  /**
-   * Checks whether a property name is a custom attribute.
-   * @method
-   */
-  isCustomAttribute: function(attributeName) {
-    for (var i = 0; i < DOMProperty._isCustomAttributeFunctions.length; i++) {
-      var isCustomAttributeFn = DOMProperty._isCustomAttributeFunctions[i];
-      if (isCustomAttributeFn(attributeName)) {
-        return true;
-      }
+  if (typeof node === 'object') {
+    var element = node;
+    if ("production" !== process.env.NODE_ENV) {
+      ("production" !== process.env.NODE_ENV ? warning(
+        element && (typeof element.type === 'function' ||
+                    typeof element.type === 'string'),
+        'Only functions or strings can be mounted as React components.'
+      ) : null);
     }
-    return false;
-  },
 
-  /**
-   * Returns the default property value for a DOM property (i.e., not an
-   * attribute). Most default values are '' or false, but not all. Worse yet,
-   * some (in particular, `type`) vary depending on the type of element.
-   *
-   * TODO: Is it better to grab all the possible properties when creating an
-   * element to avoid having to create the same element twice?
-   */
-  getDefaultValueForProperty: function(nodeName, prop) {
-    var nodeDefaults = defaultValueCache[nodeName];
-    var testElement;
-    if (!nodeDefaults) {
-      defaultValueCache[nodeName] = nodeDefaults = {};
+    // Special case string values
+    if (parentCompositeType === element.type &&
+        typeof element.type === 'string') {
+      // Avoid recursion if the wrapper renders itself.
+      instance = ReactNativeComponent.createInternalComponent(element);
+      // All native components are currently wrapped in a composite so we're
+      // safe to assume that this is what we should instantiate.
+    } else if (isInternalComponentType(element.type)) {
+      // This is temporarily available for custom components that are not string
+      // represenations. I.e. ART. Once those are updated to use the string
+      // representation, we can drop this code path.
+      instance = new element.type(element);
+    } else {
+      instance = new ReactCompositeComponentWrapper();
     }
-    if (!(prop in nodeDefaults)) {
-      testElement = document.createElement(nodeName);
-      nodeDefaults[prop] = testElement[prop];
-    }
-    return nodeDefaults[prop];
-  },
-
-  injection: DOMPropertyInjection
-};
-
-module.exports = DOMProperty;
-
-},{ "./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/containsNode.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule containsNode
- * @typechecks
- */
-
-var isTextNode = require("./isTextNode");
-
-/*jslint bitwise:true */
-
-/**
- * Checks if a given DOM node contains or is another DOM node.
- *
- * @param {?DOMNode} outerNode Outer DOM node.
- * @param {?DOMNode} innerNode Inner DOM node.
- * @return {boolean} True if `outerNode` contains or is `innerNode`.
- */
-function containsNode(outerNode, innerNode) {
-  if (!outerNode || !innerNode) {
-    return false;
-  } else if (outerNode === innerNode) {
-    return true;
-  } else if (isTextNode(outerNode)) {
-    return false;
-  } else if (isTextNode(innerNode)) {
-    return containsNode(outerNode, innerNode.parentNode);
-  } else if (outerNode.contains) {
-    return outerNode.contains(innerNode);
-  } else if (outerNode.compareDocumentPosition) {
-    return !!(outerNode.compareDocumentPosition(innerNode) & 16);
+  } else if (typeof node === 'string' || typeof node === 'number') {
+    instance = ReactNativeComponent.createInstanceForText(node);
   } else {
-    return false;
+    ("production" !== process.env.NODE_ENV ? invariant(
+      false,
+      'Encountered invalid React node of type %s',
+      typeof node
+    ) : invariant(false));
   }
+
+  if ("production" !== process.env.NODE_ENV) {
+    ("production" !== process.env.NODE_ENV ? warning(
+      typeof instance.construct === 'function' &&
+      typeof instance.mountComponent === 'function' &&
+      typeof instance.receiveComponent === 'function' &&
+      typeof instance.unmountComponent === 'function',
+      'Only React Components can be mounted.'
+    ) : null);
+  }
+
+  // Sets up the instance. This can probably just move into the constructor now.
+  instance.construct(node);
+
+  // These two fields are used by the DOM and ART diffing algorithms
+  // respectively. Instead of using expandos on components, we should be
+  // storing the state needed by the diffing algorithms elsewhere.
+  instance._mountIndex = 0;
+  instance._mountImage = null;
+
+  if ("production" !== process.env.NODE_ENV) {
+    instance._isOwnerNecessary = false;
+    instance._warnedAboutRefsInRender = false;
+  }
+
+  // Internal instances should fully constructed at this point, so they should
+  // not get any new fields added to them at this point.
+  if ("production" !== process.env.NODE_ENV) {
+    if (Object.preventExtensions) {
+      Object.preventExtensions(instance);
+    }
+  }
+
+  return instance;
 }
 
-module.exports = containsNode;
+module.exports = instantiateReactComponent;
 
-},{ "./isTextNode":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/isTextNode.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMarkupChecksum.js":[function(require,module,exports){
+},{ "./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./ReactCompositeComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactCompositeComponent.js","./ReactEmptyComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactEmptyComponent.js","./ReactNativeComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactNativeComponent.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/setInnerHTML.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -44948,46 +45088,87 @@ module.exports = containsNode;
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
  *
- * @providesModule ReactMarkupChecksum
+ * @providesModule setInnerHTML
  */
+
+/* globals MSApp */
 
 'use strict';
 
-var adler32 = require("./adler32");
+var ExecutionEnvironment = require("./ExecutionEnvironment");
 
-var ReactMarkupChecksum = {
-  CHECKSUM_ATTR_NAME: 'data-react-checksum',
+var WHITESPACE_TEST = /^[ \r\n\t\f]/;
+var NONVISIBLE_TEST = /<(!--|link|noscript|meta|script|style)[ \r\n\t\f\/>]/;
 
-  /**
-   * @param {string} markup Markup string
-   * @return {string} Markup string with checksum attribute attached
-   */
-  addChecksumToMarkup: function(markup) {
-    var checksum = adler32(markup);
-    return markup.replace(
-      '>',
-      ' ' + ReactMarkupChecksum.CHECKSUM_ATTR_NAME + '="' + checksum + '">'
-    );
-  },
-
-  /**
-   * @param {string} markup to use
-   * @param {DOMElement} element root React element
-   * @returns {boolean} whether or not the markup is the same
-   */
-  canReuseMarkup: function(markup, element) {
-    var existingChecksum = element.getAttribute(
-      ReactMarkupChecksum.CHECKSUM_ATTR_NAME
-    );
-    existingChecksum = existingChecksum && parseInt(existingChecksum, 10);
-    var markupChecksum = adler32(markup);
-    return markupChecksum === existingChecksum;
-  }
+/**
+ * Set the innerHTML property of a node, ensuring that whitespace is preserved
+ * even in IE8.
+ *
+ * @param {DOMElement} node
+ * @param {string} html
+ * @internal
+ */
+var setInnerHTML = function(node, html) {
+  node.innerHTML = html;
 };
 
-module.exports = ReactMarkupChecksum;
+// Win8 apps: Allow all html to be inserted
+if (typeof MSApp !== 'undefined' && MSApp.execUnsafeLocalFunction) {
+  setInnerHTML = function(node, html) {
+    MSApp.execUnsafeLocalFunction(function() {
+      node.innerHTML = html;
+    });
+  };
+}
 
-},{ "./adler32":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/adler32.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdates.js":[function(require,module,exports){
+if (ExecutionEnvironment.canUseDOM) {
+  // IE8: When updating a just created node with innerHTML only leading
+  // whitespace is removed. When updating an existing node with innerHTML
+  // whitespace in root TextNodes is also collapsed.
+  // @see quirksmode.org/bugreports/archives/2004/11/innerhtml_and_t.html
+
+  // Feature detection; only IE8 is known to behave improperly like this.
+  var testElement = document.createElement('div');
+  testElement.innerHTML = ' ';
+  if (testElement.innerHTML === '') {
+    setInnerHTML = function(node, html) {
+      // Magic theory: IE8 supposedly differentiates between added and updated
+      // nodes when processing innerHTML, innerHTML on updated nodes suffers
+      // from worse whitespace behavior. Re-adding a node like this triggers
+      // the initial and more favorable whitespace behavior.
+      // TODO: What to do on a detached node?
+      if (node.parentNode) {
+        node.parentNode.replaceChild(node, node);
+      }
+
+      // We also implement a workaround for non-visible tags disappearing into
+      // thin air on IE8, this only happens if there is no visible text
+      // in-front of the non-visible tags. Piggyback on the whitespace fix
+      // and simply check if any non-visible tags appear in the source.
+      if (WHITESPACE_TEST.test(html) ||
+          html[0] === '<' && NONVISIBLE_TEST.test(html)) {
+        // Recover leading whitespace by temporarily prepending any character.
+        // \uFEFF has the potential advantage of being zero-width/invisible.
+        node.innerHTML = '\uFEFF' + html;
+
+        // deleteData leaves an empty `TextNode` which offsets the index of all
+        // children. Definitely want to avoid this.
+        var textNode = node.firstChild;
+        if (textNode.data.length === 1) {
+          node.removeChild(textNode);
+        } else {
+          textNode.deleteData(0, 1);
+        }
+      } else {
+        node.innerHTML = html;
+      }
+    };
+  }
+}
+
+module.exports = setInnerHTML;
+
+},{ "./ExecutionEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ExecutionEnvironment.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdates.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -45267,7 +45448,7 @@ var ReactUpdates = {
 
 module.exports = ReactUpdates;
 
-},{ "./CallbackQueue":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/CallbackQueue.js","./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./PooledClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/PooledClass.js","./ReactCurrentOwner":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactCurrentOwner.js","./ReactPerf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPerf.js","./ReactReconciler":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactReconciler.js","./Transaction":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Transaction.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/setInnerHTML.js":[function(require,module,exports){
+},{ "./CallbackQueue":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/CallbackQueue.js","./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./PooledClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/PooledClass.js","./ReactCurrentOwner":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactCurrentOwner.js","./ReactPerf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPerf.js","./ReactReconciler":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactReconciler.js","./Transaction":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Transaction.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/containsNode.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -45276,87 +45457,42 @@ module.exports = ReactUpdates;
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
  *
- * @providesModule setInnerHTML
+ * @providesModule containsNode
+ * @typechecks
  */
 
-/* globals MSApp */
+var isTextNode = require("./isTextNode");
 
-'use strict';
-
-var ExecutionEnvironment = require("./ExecutionEnvironment");
-
-var WHITESPACE_TEST = /^[ \r\n\t\f]/;
-var NONVISIBLE_TEST = /<(!--|link|noscript|meta|script|style)[ \r\n\t\f\/>]/;
+/*jslint bitwise:true */
 
 /**
- * Set the innerHTML property of a node, ensuring that whitespace is preserved
- * even in IE8.
+ * Checks if a given DOM node contains or is another DOM node.
  *
- * @param {DOMElement} node
- * @param {string} html
- * @internal
+ * @param {?DOMNode} outerNode Outer DOM node.
+ * @param {?DOMNode} innerNode Inner DOM node.
+ * @return {boolean} True if `outerNode` contains or is `innerNode`.
  */
-var setInnerHTML = function(node, html) {
-  node.innerHTML = html;
-};
-
-// Win8 apps: Allow all html to be inserted
-if (typeof MSApp !== 'undefined' && MSApp.execUnsafeLocalFunction) {
-  setInnerHTML = function(node, html) {
-    MSApp.execUnsafeLocalFunction(function() {
-      node.innerHTML = html;
-    });
-  };
-}
-
-if (ExecutionEnvironment.canUseDOM) {
-  // IE8: When updating a just created node with innerHTML only leading
-  // whitespace is removed. When updating an existing node with innerHTML
-  // whitespace in root TextNodes is also collapsed.
-  // @see quirksmode.org/bugreports/archives/2004/11/innerhtml_and_t.html
-
-  // Feature detection; only IE8 is known to behave improperly like this.
-  var testElement = document.createElement('div');
-  testElement.innerHTML = ' ';
-  if (testElement.innerHTML === '') {
-    setInnerHTML = function(node, html) {
-      // Magic theory: IE8 supposedly differentiates between added and updated
-      // nodes when processing innerHTML, innerHTML on updated nodes suffers
-      // from worse whitespace behavior. Re-adding a node like this triggers
-      // the initial and more favorable whitespace behavior.
-      // TODO: What to do on a detached node?
-      if (node.parentNode) {
-        node.parentNode.replaceChild(node, node);
-      }
-
-      // We also implement a workaround for non-visible tags disappearing into
-      // thin air on IE8, this only happens if there is no visible text
-      // in-front of the non-visible tags. Piggyback on the whitespace fix
-      // and simply check if any non-visible tags appear in the source.
-      if (WHITESPACE_TEST.test(html) ||
-          html[0] === '<' && NONVISIBLE_TEST.test(html)) {
-        // Recover leading whitespace by temporarily prepending any character.
-        // \uFEFF has the potential advantage of being zero-width/invisible.
-        node.innerHTML = '\uFEFF' + html;
-
-        // deleteData leaves an empty `TextNode` which offsets the index of all
-        // children. Definitely want to avoid this.
-        var textNode = node.firstChild;
-        if (textNode.data.length === 1) {
-          node.removeChild(textNode);
-        } else {
-          textNode.deleteData(0, 1);
-        }
-      } else {
-        node.innerHTML = html;
-      }
-    };
+function containsNode(outerNode, innerNode) {
+  if (!outerNode || !innerNode) {
+    return false;
+  } else if (outerNode === innerNode) {
+    return true;
+  } else if (isTextNode(outerNode)) {
+    return false;
+  } else if (isTextNode(innerNode)) {
+    return containsNode(outerNode, innerNode.parentNode);
+  } else if (outerNode.contains) {
+    return outerNode.contains(innerNode);
+  } else if (outerNode.compareDocumentPosition) {
+    return !!(outerNode.compareDocumentPosition(innerNode) & 16);
+  } else {
+    return false;
   }
 }
 
-module.exports = setInnerHTML;
+module.exports = containsNode;
 
-},{ "./ExecutionEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ExecutionEnvironment.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/shouldUpdateReactComponent.js":[function(require,module,exports){
+},{ "./isTextNode":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/isTextNode.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/shouldUpdateReactComponent.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -45529,143 +45665,7 @@ ReactRef.detachRefs = function(instance, element) {
 
 module.exports = ReactRef;
 
-},{ "./ReactOwner":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactOwner.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/instantiateReactComponent.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule instantiateReactComponent
- * @typechecks static-only
- */
-
-'use strict';
-
-var ReactCompositeComponent = require("./ReactCompositeComponent");
-var ReactEmptyComponent = require("./ReactEmptyComponent");
-var ReactNativeComponent = require("./ReactNativeComponent");
-
-var assign = require("./Object.assign");
-var invariant = require("./invariant");
-var warning = require("./warning");
-
-// To avoid a cyclic dependency, we create the final class in this module
-var ReactCompositeComponentWrapper = function() { };
-assign(
-  ReactCompositeComponentWrapper.prototype,
-  ReactCompositeComponent.Mixin,
-  {
-    _instantiateReactComponent: instantiateReactComponent
-  }
-);
-
-/**
- * Check if the type reference is a known internal type. I.e. not a user
- * provided composite type.
- *
- * @param {function} type
- * @return {boolean} Returns true if this is a valid internal type.
- */
-function isInternalComponentType(type) {
-  return (
-    typeof type === 'function' &&
-    typeof type.prototype !== 'undefined' &&
-    typeof type.prototype.mountComponent === 'function' &&
-    typeof type.prototype.receiveComponent === 'function'
-  );
-}
-
-/**
- * Given a ReactNode, create an instance that will actually be mounted.
- *
- * @param {ReactNode} node
- * @param {*} parentCompositeType The composite type that resolved this.
- * @return {object} A new instance of the element's constructor.
- * @protected
- */
-function instantiateReactComponent(node, parentCompositeType) {
-  var instance;
-
-  if (node === null || node === false) {
-    node = ReactEmptyComponent.emptyElement;
-  }
-
-  if (typeof node === 'object') {
-    var element = node;
-    if ("production" !== process.env.NODE_ENV) {
-      ("production" !== process.env.NODE_ENV ? warning(
-        element && (typeof element.type === 'function' ||
-                    typeof element.type === 'string'),
-        'Only functions or strings can be mounted as React components.'
-      ) : null);
-    }
-
-    // Special case string values
-    if (parentCompositeType === element.type &&
-        typeof element.type === 'string') {
-      // Avoid recursion if the wrapper renders itself.
-      instance = ReactNativeComponent.createInternalComponent(element);
-      // All native components are currently wrapped in a composite so we're
-      // safe to assume that this is what we should instantiate.
-    } else if (isInternalComponentType(element.type)) {
-      // This is temporarily available for custom components that are not string
-      // represenations. I.e. ART. Once those are updated to use the string
-      // representation, we can drop this code path.
-      instance = new element.type(element);
-    } else {
-      instance = new ReactCompositeComponentWrapper();
-    }
-  } else if (typeof node === 'string' || typeof node === 'number') {
-    instance = ReactNativeComponent.createInstanceForText(node);
-  } else {
-    ("production" !== process.env.NODE_ENV ? invariant(
-      false,
-      'Encountered invalid React node of type %s',
-      typeof node
-    ) : invariant(false));
-  }
-
-  if ("production" !== process.env.NODE_ENV) {
-    ("production" !== process.env.NODE_ENV ? warning(
-      typeof instance.construct === 'function' &&
-      typeof instance.mountComponent === 'function' &&
-      typeof instance.receiveComponent === 'function' &&
-      typeof instance.unmountComponent === 'function',
-      'Only React Components can be mounted.'
-    ) : null);
-  }
-
-  // Sets up the instance. This can probably just move into the constructor now.
-  instance.construct(node);
-
-  // These two fields are used by the DOM and ART diffing algorithms
-  // respectively. Instead of using expandos on components, we should be
-  // storing the state needed by the diffing algorithms elsewhere.
-  instance._mountIndex = 0;
-  instance._mountImage = null;
-
-  if ("production" !== process.env.NODE_ENV) {
-    instance._isOwnerNecessary = false;
-    instance._warnedAboutRefsInRender = false;
-  }
-
-  // Internal instances should fully constructed at this point, so they should
-  // not get any new fields added to them at this point.
-  if ("production" !== process.env.NODE_ENV) {
-    if (Object.preventExtensions) {
-      Object.preventExtensions(instance);
-    }
-  }
-
-  return instance;
-}
-
-module.exports = instantiateReactComponent;
-
-},{ "./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./ReactCompositeComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactCompositeComponent.js","./ReactEmptyComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactEmptyComponent.js","./ReactNativeComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactNativeComponent.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactServerRenderingTransaction.js":[function(require,module,exports){
+},{ "./ReactOwner":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactOwner.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactServerRenderingTransaction.js":[function(require,module,exports){
 /**
  * Copyright 2014-2015, Facebook, Inc.
  * All rights reserved.
@@ -45821,37 +45821,6 @@ function isTextInputElement(elem) {
 
 module.exports = isTextInputElement;
 
-},{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventTarget.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule getEventTarget
- * @typechecks static-only
- */
-
-'use strict';
-
-/**
- * Gets the target node from a native browser event by accounting for
- * inconsistencies in browser DOM APIs.
- *
- * @param {object} nativeEvent Native browser event.
- * @return {DOMEventTarget} Target node.
- */
-function getEventTarget(nativeEvent) {
-  var target = nativeEvent.target || nativeEvent.srcElement || window;
-  // Safari may fire events on text nodes (Node.TEXT_NODE is 3).
-  // @see http://www.quirksmode.org/js/events_properties.html
-  return target.nodeType === 3 ? target.parentNode : target;
-}
-
-module.exports = getEventTarget;
-
 },{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getUnboundedScrollPosition.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
@@ -45891,6 +45860,37 @@ function getUnboundedScrollPosition(scrollable) {
 }
 
 module.exports = getUnboundedScrollPosition;
+
+},{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventTarget.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule getEventTarget
+ * @typechecks static-only
+ */
+
+'use strict';
+
+/**
+ * Gets the target node from a native browser event by accounting for
+ * inconsistencies in browser DOM APIs.
+ *
+ * @param {object} nativeEvent Native browser event.
+ * @return {DOMEventTarget} Target node.
+ */
+function getEventTarget(nativeEvent) {
+  var target = nativeEvent.target || nativeEvent.srcElement || window;
+  // Safari may fire events on text nodes (Node.TEXT_NODE is 3).
+  // @see http://www.quirksmode.org/js/events_properties.html
+  return target.nodeType === 3 ? target.parentNode : target;
+}
+
+module.exports = getEventTarget;
 
 },{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getActiveElement.js":[function(require,module,exports){
 /**
@@ -45964,6 +45964,40 @@ function shallowEqual(objA, objB) {
 }
 
 module.exports = shallowEqual;
+
+},{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/adler32.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule adler32
+ */
+
+/* jslint bitwise:true */
+
+'use strict';
+
+var MOD = 65521;
+
+// This is a clean-room implementation of adler32 designed for detecting
+// if markup is not what we expect it to be. It does not need to be
+// cryptographically strong, only reasonably good at detecting if markup
+// generated on the server is different than that on the client.
+function adler32(data) {
+  var a = 1;
+  var b = 0;
+  for (var i = 0; i < data.length; i++) {
+    a = (a + data.charCodeAt(i)) % MOD;
+    b = (b + a) % MOD;
+  }
+  return a | (b << 16);
+}
+
+module.exports = adler32;
 
 },{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventCharCode.js":[function(require,module,exports){
 /**
@@ -46046,106 +46080,7 @@ var ViewportMetrics = {
 
 module.exports = ViewportMetrics;
 
-},{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/adler32.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule adler32
- */
-
-/* jslint bitwise:true */
-
-'use strict';
-
-var MOD = 65521;
-
-// This is a clean-room implementation of adler32 designed for detecting
-// if markup is not what we expect it to be. It does not need to be
-// cryptographically strong, only reasonably good at detecting if markup
-// generated on the server is different than that on the client.
-function adler32(data) {
-  var a = 1;
-  var b = 0;
-  for (var i = 0; i < data.length; i++) {
-    a = (a + data.charCodeAt(i)) % MOD;
-    b = (b + a) % MOD;
-  }
-  return a | (b << 16);
-}
-
-module.exports = adler32;
-
-},{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/isEventSupported.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule isEventSupported
- */
-
-'use strict';
-
-var ExecutionEnvironment = require("./ExecutionEnvironment");
-
-var useHasFeature;
-if (ExecutionEnvironment.canUseDOM) {
-  useHasFeature =
-    document.implementation &&
-    document.implementation.hasFeature &&
-    // always returns true in newer browsers as per the standard.
-    // @see http://dom.spec.whatwg.org/#dom-domimplementation-hasfeature
-    document.implementation.hasFeature('', '') !== true;
-}
-
-/**
- * Checks if an event is supported in the current execution environment.
- *
- * NOTE: This will not work correctly for non-generic events such as `change`,
- * `reset`, `load`, `error`, and `select`.
- *
- * Borrows from Modernizr.
- *
- * @param {string} eventNameSuffix Event name, e.g. "click".
- * @param {?boolean} capture Check if the capture phase is supported.
- * @return {boolean} True if the event is supported.
- * @internal
- * @license Modernizr 3.0.0pre (Custom Build) | MIT
- */
-function isEventSupported(eventNameSuffix, capture) {
-  if (!ExecutionEnvironment.canUseDOM ||
-      capture && !('addEventListener' in document)) {
-    return false;
-  }
-
-  var eventName = 'on' + eventNameSuffix;
-  var isSupported = eventName in document;
-
-  if (!isSupported) {
-    var element = document.createElement('div');
-    element.setAttribute(eventName, 'return;');
-    isSupported = typeof element[eventName] === 'function';
-  }
-
-  if (!isSupported && useHasFeature && eventNameSuffix === 'wheel') {
-    // This is the only way to test support for the `wheel` event in IE9+.
-    isSupported = document.implementation.hasFeature('Events.wheel', '3.0');
-  }
-
-  return isSupported;
-}
-
-module.exports = isEventSupported;
-
-},{ "./ExecutionEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ExecutionEnvironment.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/CSSPropertyOperations.js":[function(require,module,exports){
+},{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/CSSPropertyOperations.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -46325,7 +46260,240 @@ var CSSPropertyOperations = {
 
 module.exports = CSSPropertyOperations;
 
-},{ "./CSSProperty":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/CSSProperty.js","./ExecutionEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ExecutionEnvironment.js","./camelizeStyleName":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/camelizeStyleName.js","./dangerousStyleValue":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/dangerousStyleValue.js","./hyphenateStyleName":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/hyphenateStyleName.js","./memoizeStringOnly":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/memoizeStringOnly.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMultiChild.js":[function(require,module,exports){
+},{ "./CSSProperty":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/CSSProperty.js","./ExecutionEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ExecutionEnvironment.js","./camelizeStyleName":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/camelizeStyleName.js","./dangerousStyleValue":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/dangerousStyleValue.js","./hyphenateStyleName":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/hyphenateStyleName.js","./memoizeStringOnly":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/memoizeStringOnly.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/isEventSupported.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule isEventSupported
+ */
+
+'use strict';
+
+var ExecutionEnvironment = require("./ExecutionEnvironment");
+
+var useHasFeature;
+if (ExecutionEnvironment.canUseDOM) {
+  useHasFeature =
+    document.implementation &&
+    document.implementation.hasFeature &&
+    // always returns true in newer browsers as per the standard.
+    // @see http://dom.spec.whatwg.org/#dom-domimplementation-hasfeature
+    document.implementation.hasFeature('', '') !== true;
+}
+
+/**
+ * Checks if an event is supported in the current execution environment.
+ *
+ * NOTE: This will not work correctly for non-generic events such as `change`,
+ * `reset`, `load`, `error`, and `select`.
+ *
+ * Borrows from Modernizr.
+ *
+ * @param {string} eventNameSuffix Event name, e.g. "click".
+ * @param {?boolean} capture Check if the capture phase is supported.
+ * @return {boolean} True if the event is supported.
+ * @internal
+ * @license Modernizr 3.0.0pre (Custom Build) | MIT
+ */
+function isEventSupported(eventNameSuffix, capture) {
+  if (!ExecutionEnvironment.canUseDOM ||
+      capture && !('addEventListener' in document)) {
+    return false;
+  }
+
+  var eventName = 'on' + eventNameSuffix;
+  var isSupported = eventName in document;
+
+  if (!isSupported) {
+    var element = document.createElement('div');
+    element.setAttribute(eventName, 'return;');
+    isSupported = typeof element[eventName] === 'function';
+  }
+
+  if (!isSupported && useHasFeature && eventNameSuffix === 'wheel') {
+    // This is the only way to test support for the `wheel` event in IE9+.
+    isSupported = document.implementation.hasFeature('Events.wheel', '3.0');
+  }
+
+  return isSupported;
+}
+
+module.exports = isEventSupported;
+
+},{ "./ExecutionEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ExecutionEnvironment.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/quoteAttributeValueForBrowser.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule quoteAttributeValueForBrowser
+ */
+
+'use strict';
+
+var escapeTextContentForBrowser = require("./escapeTextContentForBrowser");
+
+/**
+ * Escapes attribute value to prevent scripting attacks.
+ *
+ * @param {*} value Value to escape.
+ * @return {string} An escaped string.
+ */
+function quoteAttributeValueForBrowser(value) {
+  return '"' + escapeTextContentForBrowser(value) + '"';
+}
+
+module.exports = quoteAttributeValueForBrowser;
+
+},{ "./escapeTextContentForBrowser":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/escapeTextContentForBrowser.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPropagators.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule EventPropagators
+ */
+
+'use strict';
+
+var EventConstants = require("./EventConstants");
+var EventPluginHub = require("./EventPluginHub");
+
+var accumulateInto = require("./accumulateInto");
+var forEachAccumulated = require("./forEachAccumulated");
+
+var PropagationPhases = EventConstants.PropagationPhases;
+var getListener = EventPluginHub.getListener;
+
+/**
+ * Some event types have a notion of different registration names for different
+ * "phases" of propagation. This finds listeners by a given phase.
+ */
+function listenerAtPhase(id, event, propagationPhase) {
+  var registrationName =
+    event.dispatchConfig.phasedRegistrationNames[propagationPhase];
+  return getListener(id, registrationName);
+}
+
+/**
+ * Tags a `SyntheticEvent` with dispatched listeners. Creating this function
+ * here, allows us to not have to bind or create functions for each event.
+ * Mutating the event's members allows us to not have to create a wrapping
+ * "dispatch" object that pairs the event with the listener.
+ */
+function accumulateDirectionalDispatches(domID, upwards, event) {
+  if ("production" !== process.env.NODE_ENV) {
+    if (!domID) {
+      throw new Error('Dispatching id must not be null');
+    }
+  }
+  var phase = upwards ? PropagationPhases.bubbled : PropagationPhases.captured;
+  var listener = listenerAtPhase(domID, event, phase);
+  if (listener) {
+    event._dispatchListeners =
+      accumulateInto(event._dispatchListeners, listener);
+    event._dispatchIDs = accumulateInto(event._dispatchIDs, domID);
+  }
+}
+
+/**
+ * Collect dispatches (must be entirely collected before dispatching - see unit
+ * tests). Lazily allocate the array to conserve memory.  We must loop through
+ * each event and perform the traversal for each one. We can not perform a
+ * single traversal for the entire collection of events because each event may
+ * have a different target.
+ */
+function accumulateTwoPhaseDispatchesSingle(event) {
+  if (event && event.dispatchConfig.phasedRegistrationNames) {
+    EventPluginHub.injection.getInstanceHandle().traverseTwoPhase(
+      event.dispatchMarker,
+      accumulateDirectionalDispatches,
+      event
+    );
+  }
+}
+
+
+/**
+ * Accumulates without regard to direction, does not look for phased
+ * registration names. Same as `accumulateDirectDispatchesSingle` but without
+ * requiring that the `dispatchMarker` be the same as the dispatched ID.
+ */
+function accumulateDispatches(id, ignoredDirection, event) {
+  if (event && event.dispatchConfig.registrationName) {
+    var registrationName = event.dispatchConfig.registrationName;
+    var listener = getListener(id, registrationName);
+    if (listener) {
+      event._dispatchListeners =
+        accumulateInto(event._dispatchListeners, listener);
+      event._dispatchIDs = accumulateInto(event._dispatchIDs, id);
+    }
+  }
+}
+
+/**
+ * Accumulates dispatches on an `SyntheticEvent`, but only for the
+ * `dispatchMarker`.
+ * @param {SyntheticEvent} event
+ */
+function accumulateDirectDispatchesSingle(event) {
+  if (event && event.dispatchConfig.registrationName) {
+    accumulateDispatches(event.dispatchMarker, null, event);
+  }
+}
+
+function accumulateTwoPhaseDispatches(events) {
+  forEachAccumulated(events, accumulateTwoPhaseDispatchesSingle);
+}
+
+function accumulateEnterLeaveDispatches(leave, enter, fromID, toID) {
+  EventPluginHub.injection.getInstanceHandle().traverseEnterLeave(
+    fromID,
+    toID,
+    accumulateDispatches,
+    leave,
+    enter
+  );
+}
+
+
+function accumulateDirectDispatches(events) {
+  forEachAccumulated(events, accumulateDirectDispatchesSingle);
+}
+
+
+
+/**
+ * A small set of propagation patterns, each of which will accept a small amount
+ * of information, and generate a set of "dispatch ready event objects" - which
+ * are sets of events that have already been annotated with a set of dispatched
+ * listener functions/ids. The API is designed this way to discourage these
+ * propagation strategies from actually executing the dispatches, since we
+ * always want to collect the entire set of dispatches before executing event a
+ * single one.
+ *
+ * @constructor EventPropagators
+ */
+var EventPropagators = {
+  accumulateTwoPhaseDispatches: accumulateTwoPhaseDispatches,
+  accumulateDirectDispatches: accumulateDirectDispatches,
+  accumulateEnterLeaveDispatches: accumulateEnterLeaveDispatches
+};
+
+module.exports = EventPropagators;
+
+},{ "./EventConstants":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventConstants.js","./EventPluginHub":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPluginHub.js","./accumulateInto":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/accumulateInto.js","./forEachAccumulated":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/forEachAccumulated.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMultiChild.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -46755,7 +46923,7 @@ var ReactMultiChild = {
 
 module.exports = ReactMultiChild;
 
-},{ "./ReactChildReconciler":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactChildReconciler.js","./ReactComponentEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactComponentEnvironment.js","./ReactMultiChildUpdateTypes":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMultiChildUpdateTypes.js","./ReactReconciler":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactReconciler.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/quoteAttributeValueForBrowser.js":[function(require,module,exports){
+},{ "./ReactChildReconciler":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactChildReconciler.js","./ReactComponentEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactComponentEnvironment.js","./ReactMultiChildUpdateTypes":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMultiChildUpdateTypes.js","./ReactReconciler":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactReconciler.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/FallbackCompositionState.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -46764,35 +46932,7 @@ module.exports = ReactMultiChild;
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
  *
- * @providesModule quoteAttributeValueForBrowser
- */
-
-'use strict';
-
-var escapeTextContentForBrowser = require("./escapeTextContentForBrowser");
-
-/**
- * Escapes attribute value to prevent scripting attacks.
- *
- * @param {*} value Value to escape.
- * @return {string} An escaped string.
- */
-function quoteAttributeValueForBrowser(value) {
-  return '"' + escapeTextContentForBrowser(value) + '"';
-}
-
-module.exports = quoteAttributeValueForBrowser;
-
-},{ "./escapeTextContentForBrowser":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/escapeTextContentForBrowser.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticEvent.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule SyntheticEvent
+ * @providesModule FallbackCompositionState
  * @typechecks static-only
  */
 
@@ -46801,155 +46941,125 @@ module.exports = quoteAttributeValueForBrowser;
 var PooledClass = require("./PooledClass");
 
 var assign = require("./Object.assign");
-var emptyFunction = require("./emptyFunction");
-var getEventTarget = require("./getEventTarget");
+var getTextContentAccessor = require("./getTextContentAccessor");
+
+/**
+ * This helper class stores information about text content of a target node,
+ * allowing comparison of content before and after a given event.
+ *
+ * Identify the node where selection currently begins, then observe
+ * both its text content and its current position in the DOM. Since the
+ * browser may natively replace the target node during composition, we can
+ * use its position to find its replacement.
+ *
+ * @param {DOMEventTarget} root
+ */
+function FallbackCompositionState(root) {
+  this._root = root;
+  this._startText = this.getText();
+  this._fallbackText = null;
+}
+
+assign(FallbackCompositionState.prototype, {
+  /**
+   * Get current text of input.
+   *
+   * @return {string}
+   */
+  getText: function() {
+    if ('value' in this._root) {
+      return this._root.value;
+    }
+    return this._root[getTextContentAccessor()];
+  },
+
+  /**
+   * Determine the differing substring between the initially stored
+   * text content and the current content.
+   *
+   * @return {string}
+   */
+  getData: function() {
+    if (this._fallbackText) {
+      return this._fallbackText;
+    }
+
+    var start;
+    var startValue = this._startText;
+    var startLength = startValue.length;
+    var end;
+    var endValue = this.getText();
+    var endLength = endValue.length;
+
+    for (start = 0; start < startLength; start++) {
+      if (startValue[start] !== endValue[start]) {
+        break;
+      }
+    }
+
+    var minEnd = startLength - start;
+    for (end = 1; end <= minEnd; end++) {
+      if (startValue[startLength - end] !== endValue[endLength - end]) {
+        break;
+      }
+    }
+
+    var sliceTail = end > 1 ? 1 - end : undefined;
+    this._fallbackText = endValue.slice(start, sliceTail);
+    return this._fallbackText;
+  }
+});
+
+PooledClass.addPoolingTo(FallbackCompositionState);
+
+module.exports = FallbackCompositionState;
+
+},{ "./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./PooledClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/PooledClass.js","./getTextContentAccessor":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getTextContentAccessor.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticCompositionEvent.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule SyntheticCompositionEvent
+ * @typechecks static-only
+ */
+
+'use strict';
+
+var SyntheticEvent = require("./SyntheticEvent");
 
 /**
  * @interface Event
- * @see http://www.w3.org/TR/DOM-Level-3-Events/
+ * @see http://www.w3.org/TR/DOM-Level-3-Events/#events-compositionevents
  */
-var EventInterface = {
-  type: null,
-  target: getEventTarget,
-  // currentTarget is set when dispatching; no use in copying it here
-  currentTarget: emptyFunction.thatReturnsNull,
-  eventPhase: null,
-  bubbles: null,
-  cancelable: null,
-  timeStamp: function(event) {
-    return event.timeStamp || Date.now();
-  },
-  defaultPrevented: null,
-  isTrusted: null
+var CompositionEventInterface = {
+  data: null
 };
 
 /**
- * Synthetic events are dispatched by event plugins, typically in response to a
- * top-level event delegation handler.
- *
- * These systems should generally use pooling to reduce the frequency of garbage
- * collection. The system should check `isPersistent` to determine whether the
- * event should be released into the pool after being dispatched. Users that
- * need a persisted event should invoke `persist`.
- *
- * Synthetic events (and subclasses) implement the DOM Level 3 Events API by
- * normalizing browser quirks. Subclasses do not necessarily have to implement a
- * DOM interface; custom application-specific events can also subclass this.
- *
  * @param {object} dispatchConfig Configuration used to dispatch this event.
  * @param {string} dispatchMarker Marker identifying the event target.
  * @param {object} nativeEvent Native browser event.
+ * @extends {SyntheticUIEvent}
  */
-function SyntheticEvent(dispatchConfig, dispatchMarker, nativeEvent) {
-  this.dispatchConfig = dispatchConfig;
-  this.dispatchMarker = dispatchMarker;
-  this.nativeEvent = nativeEvent;
-
-  var Interface = this.constructor.Interface;
-  for (var propName in Interface) {
-    if (!Interface.hasOwnProperty(propName)) {
-      continue;
-    }
-    var normalize = Interface[propName];
-    if (normalize) {
-      this[propName] = normalize(nativeEvent);
-    } else {
-      this[propName] = nativeEvent[propName];
-    }
-  }
-
-  var defaultPrevented = nativeEvent.defaultPrevented != null ?
-    nativeEvent.defaultPrevented :
-    nativeEvent.returnValue === false;
-  if (defaultPrevented) {
-    this.isDefaultPrevented = emptyFunction.thatReturnsTrue;
-  } else {
-    this.isDefaultPrevented = emptyFunction.thatReturnsFalse;
-  }
-  this.isPropagationStopped = emptyFunction.thatReturnsFalse;
+function SyntheticCompositionEvent(
+  dispatchConfig,
+  dispatchMarker,
+  nativeEvent) {
+  SyntheticEvent.call(this, dispatchConfig, dispatchMarker, nativeEvent);
 }
 
-assign(SyntheticEvent.prototype, {
+SyntheticEvent.augmentClass(
+  SyntheticCompositionEvent,
+  CompositionEventInterface
+);
 
-  preventDefault: function() {
-    this.defaultPrevented = true;
-    var event = this.nativeEvent;
-    if (event.preventDefault) {
-      event.preventDefault();
-    } else {
-      event.returnValue = false;
-    }
-    this.isDefaultPrevented = emptyFunction.thatReturnsTrue;
-  },
+module.exports = SyntheticCompositionEvent;
 
-  stopPropagation: function() {
-    var event = this.nativeEvent;
-    if (event.stopPropagation) {
-      event.stopPropagation();
-    } else {
-      event.cancelBubble = true;
-    }
-    this.isPropagationStopped = emptyFunction.thatReturnsTrue;
-  },
-
-  /**
-   * We release all dispatched `SyntheticEvent`s after each event loop, adding
-   * them back into the pool. This allows a way to hold onto a reference that
-   * won't be added back into the pool.
-   */
-  persist: function() {
-    this.isPersistent = emptyFunction.thatReturnsTrue;
-  },
-
-  /**
-   * Checks if this event should be released back into the pool.
-   *
-   * @return {boolean} True if this should not be released, false otherwise.
-   */
-  isPersistent: emptyFunction.thatReturnsFalse,
-
-  /**
-   * `PooledClass` looks for `destructor` on each instance it releases.
-   */
-  destructor: function() {
-    var Interface = this.constructor.Interface;
-    for (var propName in Interface) {
-      this[propName] = null;
-    }
-    this.dispatchConfig = null;
-    this.dispatchMarker = null;
-    this.nativeEvent = null;
-  }
-
-});
-
-SyntheticEvent.Interface = EventInterface;
-
-/**
- * Helper to reduce boilerplate when creating subclasses.
- *
- * @param {function} Class
- * @param {?object} Interface
- */
-SyntheticEvent.augmentClass = function(Class, Interface) {
-  var Super = this;
-
-  var prototype = Object.create(Super.prototype);
-  assign(prototype, Class.prototype);
-  Class.prototype = prototype;
-  Class.prototype.constructor = Class;
-
-  Class.Interface = assign({}, Super.Interface, Interface);
-  Class.augmentClass = Super.augmentClass;
-
-  PooledClass.addPoolingTo(Class, PooledClass.threeArgumentPooler);
-};
-
-PooledClass.addPoolingTo(SyntheticEvent, PooledClass.threeArgumentPooler);
-
-module.exports = SyntheticEvent;
-
-},{ "./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./PooledClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/PooledClass.js","./emptyFunction":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/emptyFunction.js","./getEventTarget":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventTarget.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPluginHub.js":[function(require,module,exports){
+},{ "./SyntheticEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticEvent.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPluginHub.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -47225,147 +47335,7 @@ var EventPluginHub = {
 
 module.exports = EventPluginHub;
 
-},{ "./EventPluginRegistry":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPluginRegistry.js","./EventPluginUtils":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPluginUtils.js","./accumulateInto":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/accumulateInto.js","./forEachAccumulated":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/forEachAccumulated.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPropagators.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule EventPropagators
- */
-
-'use strict';
-
-var EventConstants = require("./EventConstants");
-var EventPluginHub = require("./EventPluginHub");
-
-var accumulateInto = require("./accumulateInto");
-var forEachAccumulated = require("./forEachAccumulated");
-
-var PropagationPhases = EventConstants.PropagationPhases;
-var getListener = EventPluginHub.getListener;
-
-/**
- * Some event types have a notion of different registration names for different
- * "phases" of propagation. This finds listeners by a given phase.
- */
-function listenerAtPhase(id, event, propagationPhase) {
-  var registrationName =
-    event.dispatchConfig.phasedRegistrationNames[propagationPhase];
-  return getListener(id, registrationName);
-}
-
-/**
- * Tags a `SyntheticEvent` with dispatched listeners. Creating this function
- * here, allows us to not have to bind or create functions for each event.
- * Mutating the event's members allows us to not have to create a wrapping
- * "dispatch" object that pairs the event with the listener.
- */
-function accumulateDirectionalDispatches(domID, upwards, event) {
-  if ("production" !== process.env.NODE_ENV) {
-    if (!domID) {
-      throw new Error('Dispatching id must not be null');
-    }
-  }
-  var phase = upwards ? PropagationPhases.bubbled : PropagationPhases.captured;
-  var listener = listenerAtPhase(domID, event, phase);
-  if (listener) {
-    event._dispatchListeners =
-      accumulateInto(event._dispatchListeners, listener);
-    event._dispatchIDs = accumulateInto(event._dispatchIDs, domID);
-  }
-}
-
-/**
- * Collect dispatches (must be entirely collected before dispatching - see unit
- * tests). Lazily allocate the array to conserve memory.  We must loop through
- * each event and perform the traversal for each one. We can not perform a
- * single traversal for the entire collection of events because each event may
- * have a different target.
- */
-function accumulateTwoPhaseDispatchesSingle(event) {
-  if (event && event.dispatchConfig.phasedRegistrationNames) {
-    EventPluginHub.injection.getInstanceHandle().traverseTwoPhase(
-      event.dispatchMarker,
-      accumulateDirectionalDispatches,
-      event
-    );
-  }
-}
-
-
-/**
- * Accumulates without regard to direction, does not look for phased
- * registration names. Same as `accumulateDirectDispatchesSingle` but without
- * requiring that the `dispatchMarker` be the same as the dispatched ID.
- */
-function accumulateDispatches(id, ignoredDirection, event) {
-  if (event && event.dispatchConfig.registrationName) {
-    var registrationName = event.dispatchConfig.registrationName;
-    var listener = getListener(id, registrationName);
-    if (listener) {
-      event._dispatchListeners =
-        accumulateInto(event._dispatchListeners, listener);
-      event._dispatchIDs = accumulateInto(event._dispatchIDs, id);
-    }
-  }
-}
-
-/**
- * Accumulates dispatches on an `SyntheticEvent`, but only for the
- * `dispatchMarker`.
- * @param {SyntheticEvent} event
- */
-function accumulateDirectDispatchesSingle(event) {
-  if (event && event.dispatchConfig.registrationName) {
-    accumulateDispatches(event.dispatchMarker, null, event);
-  }
-}
-
-function accumulateTwoPhaseDispatches(events) {
-  forEachAccumulated(events, accumulateTwoPhaseDispatchesSingle);
-}
-
-function accumulateEnterLeaveDispatches(leave, enter, fromID, toID) {
-  EventPluginHub.injection.getInstanceHandle().traverseEnterLeave(
-    fromID,
-    toID,
-    accumulateDispatches,
-    leave,
-    enter
-  );
-}
-
-
-function accumulateDirectDispatches(events) {
-  forEachAccumulated(events, accumulateDirectDispatchesSingle);
-}
-
-
-
-/**
- * A small set of propagation patterns, each of which will accept a small amount
- * of information, and generate a set of "dispatch ready event objects" - which
- * are sets of events that have already been annotated with a set of dispatched
- * listener functions/ids. The API is designed this way to discourage these
- * propagation strategies from actually executing the dispatches, since we
- * always want to collect the entire set of dispatches before executing event a
- * single one.
- *
- * @constructor EventPropagators
- */
-var EventPropagators = {
-  accumulateTwoPhaseDispatches: accumulateTwoPhaseDispatches,
-  accumulateDirectDispatches: accumulateDirectDispatches,
-  accumulateEnterLeaveDispatches: accumulateEnterLeaveDispatches
-};
-
-module.exports = EventPropagators;
-
-},{ "./EventConstants":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventConstants.js","./EventPluginHub":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPluginHub.js","./accumulateInto":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/accumulateInto.js","./forEachAccumulated":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/forEachAccumulated.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticInputEvent.js":[function(require,module,exports){
+},{ "./EventPluginRegistry":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPluginRegistry.js","./EventPluginUtils":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPluginUtils.js","./accumulateInto":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/accumulateInto.js","./forEachAccumulated":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/forEachAccumulated.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticInputEvent.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -47411,7 +47381,7 @@ SyntheticEvent.augmentClass(
 
 module.exports = SyntheticInputEvent;
 
-},{ "./SyntheticEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticEvent.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/FallbackCompositionState.js":[function(require,module,exports){
+},{ "./SyntheticEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticEvent.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/AutoFocusMixin.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -47420,7 +47390,34 @@ module.exports = SyntheticInputEvent;
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
  *
- * @providesModule FallbackCompositionState
+ * @providesModule AutoFocusMixin
+ * @typechecks static-only
+ */
+
+'use strict';
+
+var focusNode = require("./focusNode");
+
+var AutoFocusMixin = {
+  componentDidMount: function() {
+    if (this.props.autoFocus) {
+      focusNode(this.getDOMNode());
+    }
+  }
+};
+
+module.exports = AutoFocusMixin;
+
+},{ "./focusNode":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/focusNode.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticEvent.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule SyntheticEvent
  * @typechecks static-only
  */
 
@@ -47429,125 +47426,155 @@ module.exports = SyntheticInputEvent;
 var PooledClass = require("./PooledClass");
 
 var assign = require("./Object.assign");
-var getTextContentAccessor = require("./getTextContentAccessor");
-
-/**
- * This helper class stores information about text content of a target node,
- * allowing comparison of content before and after a given event.
- *
- * Identify the node where selection currently begins, then observe
- * both its text content and its current position in the DOM. Since the
- * browser may natively replace the target node during composition, we can
- * use its position to find its replacement.
- *
- * @param {DOMEventTarget} root
- */
-function FallbackCompositionState(root) {
-  this._root = root;
-  this._startText = this.getText();
-  this._fallbackText = null;
-}
-
-assign(FallbackCompositionState.prototype, {
-  /**
-   * Get current text of input.
-   *
-   * @return {string}
-   */
-  getText: function() {
-    if ('value' in this._root) {
-      return this._root.value;
-    }
-    return this._root[getTextContentAccessor()];
-  },
-
-  /**
-   * Determine the differing substring between the initially stored
-   * text content and the current content.
-   *
-   * @return {string}
-   */
-  getData: function() {
-    if (this._fallbackText) {
-      return this._fallbackText;
-    }
-
-    var start;
-    var startValue = this._startText;
-    var startLength = startValue.length;
-    var end;
-    var endValue = this.getText();
-    var endLength = endValue.length;
-
-    for (start = 0; start < startLength; start++) {
-      if (startValue[start] !== endValue[start]) {
-        break;
-      }
-    }
-
-    var minEnd = startLength - start;
-    for (end = 1; end <= minEnd; end++) {
-      if (startValue[startLength - end] !== endValue[endLength - end]) {
-        break;
-      }
-    }
-
-    var sliceTail = end > 1 ? 1 - end : undefined;
-    this._fallbackText = endValue.slice(start, sliceTail);
-    return this._fallbackText;
-  }
-});
-
-PooledClass.addPoolingTo(FallbackCompositionState);
-
-module.exports = FallbackCompositionState;
-
-},{ "./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./PooledClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/PooledClass.js","./getTextContentAccessor":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getTextContentAccessor.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticCompositionEvent.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule SyntheticCompositionEvent
- * @typechecks static-only
- */
-
-'use strict';
-
-var SyntheticEvent = require("./SyntheticEvent");
+var emptyFunction = require("./emptyFunction");
+var getEventTarget = require("./getEventTarget");
 
 /**
  * @interface Event
- * @see http://www.w3.org/TR/DOM-Level-3-Events/#events-compositionevents
+ * @see http://www.w3.org/TR/DOM-Level-3-Events/
  */
-var CompositionEventInterface = {
-  data: null
+var EventInterface = {
+  type: null,
+  target: getEventTarget,
+  // currentTarget is set when dispatching; no use in copying it here
+  currentTarget: emptyFunction.thatReturnsNull,
+  eventPhase: null,
+  bubbles: null,
+  cancelable: null,
+  timeStamp: function(event) {
+    return event.timeStamp || Date.now();
+  },
+  defaultPrevented: null,
+  isTrusted: null
 };
 
 /**
+ * Synthetic events are dispatched by event plugins, typically in response to a
+ * top-level event delegation handler.
+ *
+ * These systems should generally use pooling to reduce the frequency of garbage
+ * collection. The system should check `isPersistent` to determine whether the
+ * event should be released into the pool after being dispatched. Users that
+ * need a persisted event should invoke `persist`.
+ *
+ * Synthetic events (and subclasses) implement the DOM Level 3 Events API by
+ * normalizing browser quirks. Subclasses do not necessarily have to implement a
+ * DOM interface; custom application-specific events can also subclass this.
+ *
  * @param {object} dispatchConfig Configuration used to dispatch this event.
  * @param {string} dispatchMarker Marker identifying the event target.
  * @param {object} nativeEvent Native browser event.
- * @extends {SyntheticUIEvent}
  */
-function SyntheticCompositionEvent(
-  dispatchConfig,
-  dispatchMarker,
-  nativeEvent) {
-  SyntheticEvent.call(this, dispatchConfig, dispatchMarker, nativeEvent);
+function SyntheticEvent(dispatchConfig, dispatchMarker, nativeEvent) {
+  this.dispatchConfig = dispatchConfig;
+  this.dispatchMarker = dispatchMarker;
+  this.nativeEvent = nativeEvent;
+
+  var Interface = this.constructor.Interface;
+  for (var propName in Interface) {
+    if (!Interface.hasOwnProperty(propName)) {
+      continue;
+    }
+    var normalize = Interface[propName];
+    if (normalize) {
+      this[propName] = normalize(nativeEvent);
+    } else {
+      this[propName] = nativeEvent[propName];
+    }
+  }
+
+  var defaultPrevented = nativeEvent.defaultPrevented != null ?
+    nativeEvent.defaultPrevented :
+    nativeEvent.returnValue === false;
+  if (defaultPrevented) {
+    this.isDefaultPrevented = emptyFunction.thatReturnsTrue;
+  } else {
+    this.isDefaultPrevented = emptyFunction.thatReturnsFalse;
+  }
+  this.isPropagationStopped = emptyFunction.thatReturnsFalse;
 }
 
-SyntheticEvent.augmentClass(
-  SyntheticCompositionEvent,
-  CompositionEventInterface
-);
+assign(SyntheticEvent.prototype, {
 
-module.exports = SyntheticCompositionEvent;
+  preventDefault: function() {
+    this.defaultPrevented = true;
+    var event = this.nativeEvent;
+    if (event.preventDefault) {
+      event.preventDefault();
+    } else {
+      event.returnValue = false;
+    }
+    this.isDefaultPrevented = emptyFunction.thatReturnsTrue;
+  },
 
-},{ "./SyntheticEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticEvent.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticMouseEvent.js":[function(require,module,exports){
+  stopPropagation: function() {
+    var event = this.nativeEvent;
+    if (event.stopPropagation) {
+      event.stopPropagation();
+    } else {
+      event.cancelBubble = true;
+    }
+    this.isPropagationStopped = emptyFunction.thatReturnsTrue;
+  },
+
+  /**
+   * We release all dispatched `SyntheticEvent`s after each event loop, adding
+   * them back into the pool. This allows a way to hold onto a reference that
+   * won't be added back into the pool.
+   */
+  persist: function() {
+    this.isPersistent = emptyFunction.thatReturnsTrue;
+  },
+
+  /**
+   * Checks if this event should be released back into the pool.
+   *
+   * @return {boolean} True if this should not be released, false otherwise.
+   */
+  isPersistent: emptyFunction.thatReturnsFalse,
+
+  /**
+   * `PooledClass` looks for `destructor` on each instance it releases.
+   */
+  destructor: function() {
+    var Interface = this.constructor.Interface;
+    for (var propName in Interface) {
+      this[propName] = null;
+    }
+    this.dispatchConfig = null;
+    this.dispatchMarker = null;
+    this.nativeEvent = null;
+  }
+
+});
+
+SyntheticEvent.Interface = EventInterface;
+
+/**
+ * Helper to reduce boilerplate when creating subclasses.
+ *
+ * @param {function} Class
+ * @param {?object} Interface
+ */
+SyntheticEvent.augmentClass = function(Class, Interface) {
+  var Super = this;
+
+  var prototype = Object.create(Super.prototype);
+  assign(prototype, Class.prototype);
+  Class.prototype = prototype;
+  Class.prototype.constructor = Class;
+
+  Class.Interface = assign({}, Super.Interface, Interface);
+  Class.augmentClass = Super.augmentClass;
+
+  PooledClass.addPoolingTo(Class, PooledClass.threeArgumentPooler);
+};
+
+PooledClass.addPoolingTo(SyntheticEvent, PooledClass.threeArgumentPooler);
+
+module.exports = SyntheticEvent;
+
+},{ "./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./PooledClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/PooledClass.js","./emptyFunction":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/emptyFunction.js","./getEventTarget":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventTarget.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticMouseEvent.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -47628,7 +47655,62 @@ SyntheticUIEvent.augmentClass(SyntheticMouseEvent, MouseEventInterface);
 
 module.exports = SyntheticMouseEvent;
 
-},{ "./SyntheticUIEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticUIEvent.js","./ViewportMetrics":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ViewportMetrics.js","./getEventModifierState":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventModifierState.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Transaction.js":[function(require,module,exports){
+},{ "./SyntheticUIEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticUIEvent.js","./ViewportMetrics":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ViewportMetrics.js","./getEventModifierState":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventModifierState.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/LocalEventTrapMixin.js":[function(require,module,exports){
+/**
+ * Copyright 2014-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule LocalEventTrapMixin
+ */
+
+'use strict';
+
+var ReactBrowserEventEmitter = require("./ReactBrowserEventEmitter");
+
+var accumulateInto = require("./accumulateInto");
+var forEachAccumulated = require("./forEachAccumulated");
+var invariant = require("./invariant");
+
+function remove(event) {
+  event.remove();
+}
+
+var LocalEventTrapMixin = {
+  trapBubbledEvent:function(topLevelType, handlerBaseName) {
+    ("production" !== process.env.NODE_ENV ? invariant(this.isMounted(), 'Must be mounted to trap events') : invariant(this.isMounted()));
+    // If a component renders to null or if another component fatals and causes
+    // the state of the tree to be corrupted, `node` here can be null.
+    var node = this.getDOMNode();
+    ("production" !== process.env.NODE_ENV ? invariant(
+      node,
+      'LocalEventTrapMixin.trapBubbledEvent(...): Requires node to be rendered.'
+    ) : invariant(node));
+    var listener = ReactBrowserEventEmitter.trapBubbledEvent(
+      topLevelType,
+      handlerBaseName,
+      node
+    );
+    this._localEventListeners =
+      accumulateInto(this._localEventListeners, listener);
+  },
+
+  // trapCapturedEvent would look nearly identical. We don't implement that
+  // method because it isn't currently needed.
+
+  componentWillUnmount:function() {
+    if (this._localEventListeners) {
+      forEachAccumulated(this._localEventListeners, remove);
+    }
+  }
+};
+
+module.exports = LocalEventTrapMixin;
+
+},{ "./ReactBrowserEventEmitter":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserEventEmitter.js","./accumulateInto":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/accumulateInto.js","./forEachAccumulated":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/forEachAccumulated.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Transaction.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -47867,62 +47949,7 @@ var Transaction = {
 
 module.exports = Transaction;
 
-},{ "./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/LocalEventTrapMixin.js":[function(require,module,exports){
-/**
- * Copyright 2014-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule LocalEventTrapMixin
- */
-
-'use strict';
-
-var ReactBrowserEventEmitter = require("./ReactBrowserEventEmitter");
-
-var accumulateInto = require("./accumulateInto");
-var forEachAccumulated = require("./forEachAccumulated");
-var invariant = require("./invariant");
-
-function remove(event) {
-  event.remove();
-}
-
-var LocalEventTrapMixin = {
-  trapBubbledEvent:function(topLevelType, handlerBaseName) {
-    ("production" !== process.env.NODE_ENV ? invariant(this.isMounted(), 'Must be mounted to trap events') : invariant(this.isMounted()));
-    // If a component renders to null or if another component fatals and causes
-    // the state of the tree to be corrupted, `node` here can be null.
-    var node = this.getDOMNode();
-    ("production" !== process.env.NODE_ENV ? invariant(
-      node,
-      'LocalEventTrapMixin.trapBubbledEvent(...): Requires node to be rendered.'
-    ) : invariant(node));
-    var listener = ReactBrowserEventEmitter.trapBubbledEvent(
-      topLevelType,
-      handlerBaseName,
-      node
-    );
-    this._localEventListeners =
-      accumulateInto(this._localEventListeners, listener);
-  },
-
-  // trapCapturedEvent would look nearly identical. We don't implement that
-  // method because it isn't currently needed.
-
-  componentWillUnmount:function() {
-    if (this._localEventListeners) {
-      forEachAccumulated(this._localEventListeners, remove);
-    }
-  }
-};
-
-module.exports = LocalEventTrapMixin;
-
-},{ "./ReactBrowserEventEmitter":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserEventEmitter.js","./accumulateInto":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/accumulateInto.js","./forEachAccumulated":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/forEachAccumulated.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/AutoFocusMixin.js":[function(require,module,exports){
+},{ "./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMChildrenOperations.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -47931,25 +47958,134 @@ module.exports = LocalEventTrapMixin;
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
  *
- * @providesModule AutoFocusMixin
+ * @providesModule DOMChildrenOperations
  * @typechecks static-only
  */
 
 'use strict';
 
-var focusNode = require("./focusNode");
+var Danger = require("./Danger");
+var ReactMultiChildUpdateTypes = require("./ReactMultiChildUpdateTypes");
 
-var AutoFocusMixin = {
-  componentDidMount: function() {
-    if (this.props.autoFocus) {
-      focusNode(this.getDOMNode());
+var setTextContent = require("./setTextContent");
+var invariant = require("./invariant");
+
+/**
+ * Inserts `childNode` as a child of `parentNode` at the `index`.
+ *
+ * @param {DOMElement} parentNode Parent node in which to insert.
+ * @param {DOMElement} childNode Child node to insert.
+ * @param {number} index Index at which to insert the child.
+ * @internal
+ */
+function insertChildAt(parentNode, childNode, index) {
+  // By exploiting arrays returning `undefined` for an undefined index, we can
+  // rely exclusively on `insertBefore(node, null)` instead of also using
+  // `appendChild(node)`. However, using `undefined` is not allowed by all
+  // browsers so we must replace it with `null`.
+  parentNode.insertBefore(
+    childNode,
+    parentNode.childNodes[index] || null
+  );
+}
+
+/**
+ * Operations for updating with DOM children.
+ */
+var DOMChildrenOperations = {
+
+  dangerouslyReplaceNodeWithMarkup: Danger.dangerouslyReplaceNodeWithMarkup,
+
+  updateTextContent: setTextContent,
+
+  /**
+   * Updates a component's children by processing a series of updates. The
+   * update configurations are each expected to have a `parentNode` property.
+   *
+   * @param {array<object>} updates List of update configurations.
+   * @param {array<string>} markupList List of markup strings.
+   * @internal
+   */
+  processUpdates: function(updates, markupList) {
+    var update;
+    // Mapping from parent IDs to initial child orderings.
+    var initialChildren = null;
+    // List of children that will be moved or removed.
+    var updatedChildren = null;
+
+    for (var i = 0; i < updates.length; i++) {
+      update = updates[i];
+      if (update.type === ReactMultiChildUpdateTypes.MOVE_EXISTING ||
+          update.type === ReactMultiChildUpdateTypes.REMOVE_NODE) {
+        var updatedIndex = update.fromIndex;
+        var updatedChild = update.parentNode.childNodes[updatedIndex];
+        var parentID = update.parentID;
+
+        ("production" !== process.env.NODE_ENV ? invariant(
+          updatedChild,
+          'processUpdates(): Unable to find child %s of element. This ' +
+          'probably means the DOM was unexpectedly mutated (e.g., by the ' +
+          'browser), usually due to forgetting a <tbody> when using tables, ' +
+          'nesting tags like <form>, <p>, or <a>, or using non-SVG elements ' +
+          'in an <svg> parent. Try inspecting the child nodes of the element ' +
+          'with React ID `%s`.',
+          updatedIndex,
+          parentID
+        ) : invariant(updatedChild));
+
+        initialChildren = initialChildren || {};
+        initialChildren[parentID] = initialChildren[parentID] || [];
+        initialChildren[parentID][updatedIndex] = updatedChild;
+
+        updatedChildren = updatedChildren || [];
+        updatedChildren.push(updatedChild);
+      }
+    }
+
+    var renderedMarkup = Danger.dangerouslyRenderMarkup(markupList);
+
+    // Remove updated children first so that `toIndex` is consistent.
+    if (updatedChildren) {
+      for (var j = 0; j < updatedChildren.length; j++) {
+        updatedChildren[j].parentNode.removeChild(updatedChildren[j]);
+      }
+    }
+
+    for (var k = 0; k < updates.length; k++) {
+      update = updates[k];
+      switch (update.type) {
+        case ReactMultiChildUpdateTypes.INSERT_MARKUP:
+          insertChildAt(
+            update.parentNode,
+            renderedMarkup[update.markupIndex],
+            update.toIndex
+          );
+          break;
+        case ReactMultiChildUpdateTypes.MOVE_EXISTING:
+          insertChildAt(
+            update.parentNode,
+            initialChildren[update.parentID][update.fromIndex],
+            update.toIndex
+          );
+          break;
+        case ReactMultiChildUpdateTypes.TEXT_CONTENT:
+          setTextContent(
+            update.parentNode,
+            update.textContent
+          );
+          break;
+        case ReactMultiChildUpdateTypes.REMOVE_NODE:
+          // Already removed by the for-loop above.
+          break;
+      }
     }
   }
+
 };
 
-module.exports = AutoFocusMixin;
+module.exports = DOMChildrenOperations;
 
-},{ "./focusNode":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/focusNode.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/LinkedValueUtils.js":[function(require,module,exports){
+},{ "./Danger":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Danger.js","./ReactMultiChildUpdateTypes":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMultiChildUpdateTypes.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./setTextContent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/setTextContent.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/LinkedValueUtils.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -48103,7 +48239,66 @@ var LinkedValueUtils = {
 
 module.exports = LinkedValueUtils;
 
-},{ "./ReactPropTypes":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPropTypes.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/DOMChildrenOperations.js":[function(require,module,exports){
+},{ "./ReactPropTypes":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPropTypes.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactComponentEnvironment.js":[function(require,module,exports){
+/**
+ * Copyright 2014-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactComponentEnvironment
+ */
+
+'use strict';
+
+var invariant = require("./invariant");
+
+var injected = false;
+
+var ReactComponentEnvironment = {
+
+  /**
+   * Optionally injectable environment dependent cleanup hook. (server vs.
+   * browser etc). Example: A browser system caches DOM nodes based on component
+   * ID and must remove that cache entry when this instance is unmounted.
+   */
+  unmountIDFromEnvironment: null,
+
+  /**
+   * Optionally injectable hook for swapping out mount images in the middle of
+   * the tree.
+   */
+  replaceNodeWithMarkupByID: null,
+
+  /**
+   * Optionally injectable hook for processing a queue of child updates. Will
+   * later move into MultiChildComponents.
+   */
+  processChildrenUpdates: null,
+
+  injection: {
+    injectEnvironment: function(environment) {
+      ("production" !== process.env.NODE_ENV ? invariant(
+        !injected,
+        'ReactCompositeComponent: injectEnvironment() can only be called once.'
+      ) : invariant(!injected));
+      ReactComponentEnvironment.unmountIDFromEnvironment =
+        environment.unmountIDFromEnvironment;
+      ReactComponentEnvironment.replaceNodeWithMarkupByID =
+        environment.replaceNodeWithMarkupByID;
+      ReactComponentEnvironment.processChildrenUpdates =
+        environment.processChildrenUpdates;
+      injected = true;
+    }
+  }
+
+};
+
+module.exports = ReactComponentEnvironment;
+
+},{ "./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/CallbackQueue.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -48112,134 +48307,96 @@ module.exports = LinkedValueUtils;
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
  *
- * @providesModule DOMChildrenOperations
- * @typechecks static-only
+ * @providesModule CallbackQueue
  */
 
 'use strict';
 
-var Danger = require("./Danger");
-var ReactMultiChildUpdateTypes = require("./ReactMultiChildUpdateTypes");
+var PooledClass = require("./PooledClass");
 
-var setTextContent = require("./setTextContent");
+var assign = require("./Object.assign");
 var invariant = require("./invariant");
 
 /**
- * Inserts `childNode` as a child of `parentNode` at the `index`.
+ * A specialized pseudo-event module to help keep track of components waiting to
+ * be notified when their DOM representations are available for use.
  *
- * @param {DOMElement} parentNode Parent node in which to insert.
- * @param {DOMElement} childNode Child node to insert.
- * @param {number} index Index at which to insert the child.
+ * This implements `PooledClass`, so you should never need to instantiate this.
+ * Instead, use `CallbackQueue.getPooled()`.
+ *
+ * @class ReactMountReady
+ * @implements PooledClass
  * @internal
  */
-function insertChildAt(parentNode, childNode, index) {
-  // By exploiting arrays returning `undefined` for an undefined index, we can
-  // rely exclusively on `insertBefore(node, null)` instead of also using
-  // `appendChild(node)`. However, using `undefined` is not allowed by all
-  // browsers so we must replace it with `null`.
-  parentNode.insertBefore(
-    childNode,
-    parentNode.childNodes[index] || null
-  );
+function CallbackQueue() {
+  this._callbacks = null;
+  this._contexts = null;
 }
 
-/**
- * Operations for updating with DOM children.
- */
-var DOMChildrenOperations = {
-
-  dangerouslyReplaceNodeWithMarkup: Danger.dangerouslyReplaceNodeWithMarkup,
-
-  updateTextContent: setTextContent,
+assign(CallbackQueue.prototype, {
 
   /**
-   * Updates a component's children by processing a series of updates. The
-   * update configurations are each expected to have a `parentNode` property.
+   * Enqueues a callback to be invoked when `notifyAll` is invoked.
    *
-   * @param {array<object>} updates List of update configurations.
-   * @param {array<string>} markupList List of markup strings.
+   * @param {function} callback Invoked when `notifyAll` is invoked.
+   * @param {?object} context Context to call `callback` with.
    * @internal
    */
-  processUpdates: function(updates, markupList) {
-    var update;
-    // Mapping from parent IDs to initial child orderings.
-    var initialChildren = null;
-    // List of children that will be moved or removed.
-    var updatedChildren = null;
+  enqueue: function(callback, context) {
+    this._callbacks = this._callbacks || [];
+    this._contexts = this._contexts || [];
+    this._callbacks.push(callback);
+    this._contexts.push(context);
+  },
 
-    for (var i = 0; i < updates.length; i++) {
-      update = updates[i];
-      if (update.type === ReactMultiChildUpdateTypes.MOVE_EXISTING ||
-          update.type === ReactMultiChildUpdateTypes.REMOVE_NODE) {
-        var updatedIndex = update.fromIndex;
-        var updatedChild = update.parentNode.childNodes[updatedIndex];
-        var parentID = update.parentID;
-
-        ("production" !== process.env.NODE_ENV ? invariant(
-          updatedChild,
-          'processUpdates(): Unable to find child %s of element. This ' +
-          'probably means the DOM was unexpectedly mutated (e.g., by the ' +
-          'browser), usually due to forgetting a <tbody> when using tables, ' +
-          'nesting tags like <form>, <p>, or <a>, or using non-SVG elements ' +
-          'in an <svg> parent. Try inspecting the child nodes of the element ' +
-          'with React ID `%s`.',
-          updatedIndex,
-          parentID
-        ) : invariant(updatedChild));
-
-        initialChildren = initialChildren || {};
-        initialChildren[parentID] = initialChildren[parentID] || [];
-        initialChildren[parentID][updatedIndex] = updatedChild;
-
-        updatedChildren = updatedChildren || [];
-        updatedChildren.push(updatedChild);
+  /**
+   * Invokes all enqueued callbacks and clears the queue. This is invoked after
+   * the DOM representation of a component has been created or updated.
+   *
+   * @internal
+   */
+  notifyAll: function() {
+    var callbacks = this._callbacks;
+    var contexts = this._contexts;
+    if (callbacks) {
+      ("production" !== process.env.NODE_ENV ? invariant(
+        callbacks.length === contexts.length,
+        'Mismatched list of contexts in callback queue'
+      ) : invariant(callbacks.length === contexts.length));
+      this._callbacks = null;
+      this._contexts = null;
+      for (var i = 0, l = callbacks.length; i < l; i++) {
+        callbacks[i].call(contexts[i]);
       }
+      callbacks.length = 0;
+      contexts.length = 0;
     }
+  },
 
-    var renderedMarkup = Danger.dangerouslyRenderMarkup(markupList);
+  /**
+   * Resets the internal queue.
+   *
+   * @internal
+   */
+  reset: function() {
+    this._callbacks = null;
+    this._contexts = null;
+  },
 
-    // Remove updated children first so that `toIndex` is consistent.
-    if (updatedChildren) {
-      for (var j = 0; j < updatedChildren.length; j++) {
-        updatedChildren[j].parentNode.removeChild(updatedChildren[j]);
-      }
-    }
-
-    for (var k = 0; k < updates.length; k++) {
-      update = updates[k];
-      switch (update.type) {
-        case ReactMultiChildUpdateTypes.INSERT_MARKUP:
-          insertChildAt(
-            update.parentNode,
-            renderedMarkup[update.markupIndex],
-            update.toIndex
-          );
-          break;
-        case ReactMultiChildUpdateTypes.MOVE_EXISTING:
-          insertChildAt(
-            update.parentNode,
-            initialChildren[update.parentID][update.fromIndex],
-            update.toIndex
-          );
-          break;
-        case ReactMultiChildUpdateTypes.TEXT_CONTENT:
-          setTextContent(
-            update.parentNode,
-            update.textContent
-          );
-          break;
-        case ReactMultiChildUpdateTypes.REMOVE_NODE:
-          // Already removed by the for-loop above.
-          break;
-      }
-    }
+  /**
+   * `PooledClass` looks for this.
+   */
+  destructor: function() {
+    this.reset();
   }
 
-};
+});
 
-module.exports = DOMChildrenOperations;
+PooledClass.addPoolingTo(CallbackQueue);
 
-},{ "./Danger":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Danger.js","./ReactMultiChildUpdateTypes":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMultiChildUpdateTypes.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./setTextContent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/setTextContent.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventListener.js":[function(require,module,exports){
+module.exports = CallbackQueue;
+
+},{ "./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./PooledClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/PooledClass.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventListener.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  *
@@ -48327,66 +48484,7 @@ var EventListener = {
 
 module.exports = EventListener;
 
-},{ "./emptyFunction":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/emptyFunction.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactComponentEnvironment.js":[function(require,module,exports){
-/**
- * Copyright 2014-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule ReactComponentEnvironment
- */
-
-'use strict';
-
-var invariant = require("./invariant");
-
-var injected = false;
-
-var ReactComponentEnvironment = {
-
-  /**
-   * Optionally injectable environment dependent cleanup hook. (server vs.
-   * browser etc). Example: A browser system caches DOM nodes based on component
-   * ID and must remove that cache entry when this instance is unmounted.
-   */
-  unmountIDFromEnvironment: null,
-
-  /**
-   * Optionally injectable hook for swapping out mount images in the middle of
-   * the tree.
-   */
-  replaceNodeWithMarkupByID: null,
-
-  /**
-   * Optionally injectable hook for processing a queue of child updates. Will
-   * later move into MultiChildComponents.
-   */
-  processChildrenUpdates: null,
-
-  injection: {
-    injectEnvironment: function(environment) {
-      ("production" !== process.env.NODE_ENV ? invariant(
-        !injected,
-        'ReactCompositeComponent: injectEnvironment() can only be called once.'
-      ) : invariant(!injected));
-      ReactComponentEnvironment.unmountIDFromEnvironment =
-        environment.unmountIDFromEnvironment;
-      ReactComponentEnvironment.replaceNodeWithMarkupByID =
-        environment.replaceNodeWithMarkupByID;
-      ReactComponentEnvironment.processChildrenUpdates =
-        environment.processChildrenUpdates;
-      injected = true;
-    }
-  }
-
-};
-
-module.exports = ReactComponentEnvironment;
-
-},{ "./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInputSelection.js":[function(require,module,exports){
+},{ "./emptyFunction":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/emptyFunction.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInputSelection.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -48521,7 +48619,63 @@ var ReactInputSelection = {
 
 module.exports = ReactInputSelection;
 
-},{ "./ReactDOMSelection":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMSelection.js","./containsNode":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/containsNode.js","./focusNode":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/focusNode.js","./getActiveElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getActiveElement.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticClipboardEvent.js":[function(require,module,exports){
+},{ "./ReactDOMSelection":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMSelection.js","./containsNode":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/containsNode.js","./focusNode":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/focusNode.js","./getActiveElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getActiveElement.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPutListenerQueue.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactPutListenerQueue
+ */
+
+'use strict';
+
+var PooledClass = require("./PooledClass");
+var ReactBrowserEventEmitter = require("./ReactBrowserEventEmitter");
+
+var assign = require("./Object.assign");
+
+function ReactPutListenerQueue() {
+  this.listenersToPut = [];
+}
+
+assign(ReactPutListenerQueue.prototype, {
+  enqueuePutListener: function(rootNodeID, propKey, propValue) {
+    this.listenersToPut.push({
+      rootNodeID: rootNodeID,
+      propKey: propKey,
+      propValue: propValue
+    });
+  },
+
+  putListeners: function() {
+    for (var i = 0; i < this.listenersToPut.length; i++) {
+      var listenerToPut = this.listenersToPut[i];
+      ReactBrowserEventEmitter.putListener(
+        listenerToPut.rootNodeID,
+        listenerToPut.propKey,
+        listenerToPut.propValue
+      );
+    }
+  },
+
+  reset: function() {
+    this.listenersToPut.length = 0;
+  },
+
+  destructor: function() {
+    this.reset();
+  }
+});
+
+PooledClass.addPoolingTo(ReactPutListenerQueue);
+
+module.exports = ReactPutListenerQueue;
+
+},{ "./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./PooledClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/PooledClass.js","./ReactBrowserEventEmitter":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserEventEmitter.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticClipboardEvent.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -48566,94 +48720,7 @@ SyntheticEvent.augmentClass(SyntheticClipboardEvent, ClipboardEventInterface);
 
 module.exports = SyntheticClipboardEvent;
 
-},{ "./SyntheticEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticEvent.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticTouchEvent.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule SyntheticTouchEvent
- * @typechecks static-only
- */
-
-'use strict';
-
-var SyntheticUIEvent = require("./SyntheticUIEvent");
-
-var getEventModifierState = require("./getEventModifierState");
-
-/**
- * @interface TouchEvent
- * @see http://www.w3.org/TR/touch-events/
- */
-var TouchEventInterface = {
-  touches: null,
-  targetTouches: null,
-  changedTouches: null,
-  altKey: null,
-  metaKey: null,
-  ctrlKey: null,
-  shiftKey: null,
-  getModifierState: getEventModifierState
-};
-
-/**
- * @param {object} dispatchConfig Configuration used to dispatch this event.
- * @param {string} dispatchMarker Marker identifying the event target.
- * @param {object} nativeEvent Native browser event.
- * @extends {SyntheticUIEvent}
- */
-function SyntheticTouchEvent(dispatchConfig, dispatchMarker, nativeEvent) {
-  SyntheticUIEvent.call(this, dispatchConfig, dispatchMarker, nativeEvent);
-}
-
-SyntheticUIEvent.augmentClass(SyntheticTouchEvent, TouchEventInterface);
-
-module.exports = SyntheticTouchEvent;
-
-},{ "./SyntheticUIEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticUIEvent.js","./getEventModifierState":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventModifierState.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticDragEvent.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule SyntheticDragEvent
- * @typechecks static-only
- */
-
-'use strict';
-
-var SyntheticMouseEvent = require("./SyntheticMouseEvent");
-
-/**
- * @interface DragEvent
- * @see http://www.w3.org/TR/DOM-Level-3-Events/
- */
-var DragEventInterface = {
-  dataTransfer: null
-};
-
-/**
- * @param {object} dispatchConfig Configuration used to dispatch this event.
- * @param {string} dispatchMarker Marker identifying the event target.
- * @param {object} nativeEvent Native browser event.
- * @extends {SyntheticUIEvent}
- */
-function SyntheticDragEvent(dispatchConfig, dispatchMarker, nativeEvent) {
-  SyntheticMouseEvent.call(this, dispatchConfig, dispatchMarker, nativeEvent);
-}
-
-SyntheticMouseEvent.augmentClass(SyntheticDragEvent, DragEventInterface);
-
-module.exports = SyntheticDragEvent;
-
-},{ "./SyntheticMouseEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticMouseEvent.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticFocusEvent.js":[function(require,module,exports){
+},{ "./SyntheticEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticEvent.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticFocusEvent.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -48692,7 +48759,7 @@ SyntheticUIEvent.augmentClass(SyntheticFocusEvent, FocusEventInterface);
 
 module.exports = SyntheticFocusEvent;
 
-},{ "./SyntheticUIEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticUIEvent.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticUIEvent.js":[function(require,module,exports){
+},{ "./SyntheticUIEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticUIEvent.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticDragEvent.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -48701,69 +48768,7 @@ module.exports = SyntheticFocusEvent;
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
  *
- * @providesModule SyntheticUIEvent
- * @typechecks static-only
- */
-
-'use strict';
-
-var SyntheticEvent = require("./SyntheticEvent");
-
-var getEventTarget = require("./getEventTarget");
-
-/**
- * @interface UIEvent
- * @see http://www.w3.org/TR/DOM-Level-3-Events/
- */
-var UIEventInterface = {
-  view: function(event) {
-    if (event.view) {
-      return event.view;
-    }
-
-    var target = getEventTarget(event);
-    if (target != null && target.window === target) {
-      // target is a window object
-      return target;
-    }
-
-    var doc = target.ownerDocument;
-    // TODO: Figure out why `ownerDocument` is sometimes undefined in IE8.
-    if (doc) {
-      return doc.defaultView || doc.parentWindow;
-    } else {
-      return window;
-    }
-  },
-  detail: function(event) {
-    return event.detail || 0;
-  }
-};
-
-/**
- * @param {object} dispatchConfig Configuration used to dispatch this event.
- * @param {string} dispatchMarker Marker identifying the event target.
- * @param {object} nativeEvent Native browser event.
- * @extends {SyntheticEvent}
- */
-function SyntheticUIEvent(dispatchConfig, dispatchMarker, nativeEvent) {
-  SyntheticEvent.call(this, dispatchConfig, dispatchMarker, nativeEvent);
-}
-
-SyntheticEvent.augmentClass(SyntheticUIEvent, UIEventInterface);
-
-module.exports = SyntheticUIEvent;
-
-},{ "./SyntheticEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticEvent.js","./getEventTarget":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventTarget.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticWheelEvent.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule SyntheticWheelEvent
+ * @providesModule SyntheticDragEvent
  * @typechecks static-only
  */
 
@@ -48772,48 +48777,26 @@ module.exports = SyntheticUIEvent;
 var SyntheticMouseEvent = require("./SyntheticMouseEvent");
 
 /**
- * @interface WheelEvent
+ * @interface DragEvent
  * @see http://www.w3.org/TR/DOM-Level-3-Events/
  */
-var WheelEventInterface = {
-  deltaX: function(event) {
-    return (
-      'deltaX' in event ? event.deltaX :
-      // Fallback to `wheelDeltaX` for Webkit and normalize (right is positive).
-      'wheelDeltaX' in event ? -event.wheelDeltaX : 0
-    );
-  },
-  deltaY: function(event) {
-    return (
-      'deltaY' in event ? event.deltaY :
-      // Fallback to `wheelDeltaY` for Webkit and normalize (down is positive).
-      'wheelDeltaY' in event ? -event.wheelDeltaY :
-      // Fallback to `wheelDelta` for IE<9 and normalize (down is positive).
-      'wheelDelta' in event ? -event.wheelDelta : 0
-    );
-  },
-  deltaZ: null,
-
-  // Browsers without "deltaMode" is reporting in raw wheel delta where one
-  // notch on the scroll is always +/- 120, roughly equivalent to pixels.
-  // A good approximation of DOM_DELTA_LINE (1) is 5% of viewport size or
-  // ~40 pixels, for DOM_DELTA_SCREEN (2) it is 87.5% of viewport size.
-  deltaMode: null
+var DragEventInterface = {
+  dataTransfer: null
 };
 
 /**
  * @param {object} dispatchConfig Configuration used to dispatch this event.
  * @param {string} dispatchMarker Marker identifying the event target.
  * @param {object} nativeEvent Native browser event.
- * @extends {SyntheticMouseEvent}
+ * @extends {SyntheticUIEvent}
  */
-function SyntheticWheelEvent(dispatchConfig, dispatchMarker, nativeEvent) {
+function SyntheticDragEvent(dispatchConfig, dispatchMarker, nativeEvent) {
   SyntheticMouseEvent.call(this, dispatchConfig, dispatchMarker, nativeEvent);
 }
 
-SyntheticMouseEvent.augmentClass(SyntheticWheelEvent, WheelEventInterface);
+SyntheticMouseEvent.augmentClass(SyntheticDragEvent, DragEventInterface);
 
-module.exports = SyntheticWheelEvent;
+module.exports = SyntheticDragEvent;
 
 },{ "./SyntheticMouseEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticMouseEvent.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticKeyboardEvent.js":[function(require,module,exports){
 /**
@@ -48902,7 +48885,7 @@ SyntheticUIEvent.augmentClass(SyntheticKeyboardEvent, KeyboardEventInterface);
 
 module.exports = SyntheticKeyboardEvent;
 
-},{ "./SyntheticUIEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticUIEvent.js","./getEventCharCode":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventCharCode.js","./getEventKey":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventKey.js","./getEventModifierState":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventModifierState.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/CallbackQueue.js":[function(require,module,exports){
+},{ "./SyntheticUIEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticUIEvent.js","./getEventCharCode":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventCharCode.js","./getEventKey":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventKey.js","./getEventModifierState":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventModifierState.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticWheelEvent.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -48911,96 +48894,59 @@ module.exports = SyntheticKeyboardEvent;
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
  *
- * @providesModule CallbackQueue
+ * @providesModule SyntheticWheelEvent
+ * @typechecks static-only
  */
 
 'use strict';
 
-var PooledClass = require("./PooledClass");
-
-var assign = require("./Object.assign");
-var invariant = require("./invariant");
+var SyntheticMouseEvent = require("./SyntheticMouseEvent");
 
 /**
- * A specialized pseudo-event module to help keep track of components waiting to
- * be notified when their DOM representations are available for use.
- *
- * This implements `PooledClass`, so you should never need to instantiate this.
- * Instead, use `CallbackQueue.getPooled()`.
- *
- * @class ReactMountReady
- * @implements PooledClass
- * @internal
+ * @interface WheelEvent
+ * @see http://www.w3.org/TR/DOM-Level-3-Events/
  */
-function CallbackQueue() {
-  this._callbacks = null;
-  this._contexts = null;
+var WheelEventInterface = {
+  deltaX: function(event) {
+    return (
+      'deltaX' in event ? event.deltaX :
+      // Fallback to `wheelDeltaX` for Webkit and normalize (right is positive).
+      'wheelDeltaX' in event ? -event.wheelDeltaX : 0
+    );
+  },
+  deltaY: function(event) {
+    return (
+      'deltaY' in event ? event.deltaY :
+      // Fallback to `wheelDeltaY` for Webkit and normalize (down is positive).
+      'wheelDeltaY' in event ? -event.wheelDeltaY :
+      // Fallback to `wheelDelta` for IE<9 and normalize (down is positive).
+      'wheelDelta' in event ? -event.wheelDelta : 0
+    );
+  },
+  deltaZ: null,
+
+  // Browsers without "deltaMode" is reporting in raw wheel delta where one
+  // notch on the scroll is always +/- 120, roughly equivalent to pixels.
+  // A good approximation of DOM_DELTA_LINE (1) is 5% of viewport size or
+  // ~40 pixels, for DOM_DELTA_SCREEN (2) it is 87.5% of viewport size.
+  deltaMode: null
+};
+
+/**
+ * @param {object} dispatchConfig Configuration used to dispatch this event.
+ * @param {string} dispatchMarker Marker identifying the event target.
+ * @param {object} nativeEvent Native browser event.
+ * @extends {SyntheticMouseEvent}
+ */
+function SyntheticWheelEvent(dispatchConfig, dispatchMarker, nativeEvent) {
+  SyntheticMouseEvent.call(this, dispatchConfig, dispatchMarker, nativeEvent);
 }
 
-assign(CallbackQueue.prototype, {
+SyntheticMouseEvent.augmentClass(SyntheticWheelEvent, WheelEventInterface);
 
-  /**
-   * Enqueues a callback to be invoked when `notifyAll` is invoked.
-   *
-   * @param {function} callback Invoked when `notifyAll` is invoked.
-   * @param {?object} context Context to call `callback` with.
-   * @internal
-   */
-  enqueue: function(callback, context) {
-    this._callbacks = this._callbacks || [];
-    this._contexts = this._contexts || [];
-    this._callbacks.push(callback);
-    this._contexts.push(context);
-  },
+module.exports = SyntheticWheelEvent;
 
-  /**
-   * Invokes all enqueued callbacks and clears the queue. This is invoked after
-   * the DOM representation of a component has been created or updated.
-   *
-   * @internal
-   */
-  notifyAll: function() {
-    var callbacks = this._callbacks;
-    var contexts = this._contexts;
-    if (callbacks) {
-      ("production" !== process.env.NODE_ENV ? invariant(
-        callbacks.length === contexts.length,
-        'Mismatched list of contexts in callback queue'
-      ) : invariant(callbacks.length === contexts.length));
-      this._callbacks = null;
-      this._contexts = null;
-      for (var i = 0, l = callbacks.length; i < l; i++) {
-        callbacks[i].call(contexts[i]);
-      }
-      callbacks.length = 0;
-      contexts.length = 0;
-    }
-  },
-
-  /**
-   * Resets the internal queue.
-   *
-   * @internal
-   */
-  reset: function() {
-    this._callbacks = null;
-    this._contexts = null;
-  },
-
-  /**
-   * `PooledClass` looks for this.
-   */
-  destructor: function() {
-    this.reset();
-  }
-
-});
-
-PooledClass.addPoolingTo(CallbackQueue);
-
-module.exports = CallbackQueue;
-
-},{ "./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./PooledClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/PooledClass.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPutListenerQueue.js":[function(require,module,exports){
+},{ "./SyntheticMouseEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticMouseEvent.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticTouchEvent.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -49009,54 +48955,108 @@ module.exports = CallbackQueue;
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
  *
- * @providesModule ReactPutListenerQueue
+ * @providesModule SyntheticTouchEvent
+ * @typechecks static-only
  */
 
 'use strict';
 
-var PooledClass = require("./PooledClass");
-var ReactBrowserEventEmitter = require("./ReactBrowserEventEmitter");
+var SyntheticUIEvent = require("./SyntheticUIEvent");
 
-var assign = require("./Object.assign");
+var getEventModifierState = require("./getEventModifierState");
 
-function ReactPutListenerQueue() {
-  this.listenersToPut = [];
+/**
+ * @interface TouchEvent
+ * @see http://www.w3.org/TR/touch-events/
+ */
+var TouchEventInterface = {
+  touches: null,
+  targetTouches: null,
+  changedTouches: null,
+  altKey: null,
+  metaKey: null,
+  ctrlKey: null,
+  shiftKey: null,
+  getModifierState: getEventModifierState
+};
+
+/**
+ * @param {object} dispatchConfig Configuration used to dispatch this event.
+ * @param {string} dispatchMarker Marker identifying the event target.
+ * @param {object} nativeEvent Native browser event.
+ * @extends {SyntheticUIEvent}
+ */
+function SyntheticTouchEvent(dispatchConfig, dispatchMarker, nativeEvent) {
+  SyntheticUIEvent.call(this, dispatchConfig, dispatchMarker, nativeEvent);
 }
 
-assign(ReactPutListenerQueue.prototype, {
-  enqueuePutListener: function(rootNodeID, propKey, propValue) {
-    this.listenersToPut.push({
-      rootNodeID: rootNodeID,
-      propKey: propKey,
-      propValue: propValue
-    });
-  },
+SyntheticUIEvent.augmentClass(SyntheticTouchEvent, TouchEventInterface);
 
-  putListeners: function() {
-    for (var i = 0; i < this.listenersToPut.length; i++) {
-      var listenerToPut = this.listenersToPut[i];
-      ReactBrowserEventEmitter.putListener(
-        listenerToPut.rootNodeID,
-        listenerToPut.propKey,
-        listenerToPut.propValue
-      );
+module.exports = SyntheticTouchEvent;
+
+},{ "./SyntheticUIEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticUIEvent.js","./getEventModifierState":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventModifierState.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticUIEvent.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule SyntheticUIEvent
+ * @typechecks static-only
+ */
+
+'use strict';
+
+var SyntheticEvent = require("./SyntheticEvent");
+
+var getEventTarget = require("./getEventTarget");
+
+/**
+ * @interface UIEvent
+ * @see http://www.w3.org/TR/DOM-Level-3-Events/
+ */
+var UIEventInterface = {
+  view: function(event) {
+    if (event.view) {
+      return event.view;
+    }
+
+    var target = getEventTarget(event);
+    if (target != null && target.window === target) {
+      // target is a window object
+      return target;
+    }
+
+    var doc = target.ownerDocument;
+    // TODO: Figure out why `ownerDocument` is sometimes undefined in IE8.
+    if (doc) {
+      return doc.defaultView || doc.parentWindow;
+    } else {
+      return window;
     }
   },
-
-  reset: function() {
-    this.listenersToPut.length = 0;
-  },
-
-  destructor: function() {
-    this.reset();
+  detail: function(event) {
+    return event.detail || 0;
   }
-});
+};
 
-PooledClass.addPoolingTo(ReactPutListenerQueue);
+/**
+ * @param {object} dispatchConfig Configuration used to dispatch this event.
+ * @param {string} dispatchMarker Marker identifying the event target.
+ * @param {object} nativeEvent Native browser event.
+ * @extends {SyntheticEvent}
+ */
+function SyntheticUIEvent(dispatchConfig, dispatchMarker, nativeEvent) {
+  SyntheticEvent.call(this, dispatchConfig, dispatchMarker, nativeEvent);
+}
 
-module.exports = ReactPutListenerQueue;
+SyntheticEvent.augmentClass(SyntheticUIEvent, UIEventInterface);
 
-},{ "./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./PooledClass":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/PooledClass.js","./ReactBrowserEventEmitter":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactBrowserEventEmitter.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPluginRegistry.js":[function(require,module,exports){
+module.exports = SyntheticUIEvent;
+
+},{ "./SyntheticEvent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/SyntheticEvent.js","./getEventTarget":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventTarget.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPluginRegistry.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -49334,35 +49334,7 @@ var EventPluginRegistry = {
 
 module.exports = EventPluginRegistry;
 
-},{ "./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/performanceNow.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule performanceNow
- * @typechecks
- */
-
-var performance = require("./performance");
-
-/**
- * Detect if we can use `window.performance.now()` and gracefully fallback to
- * `Date.now()` if it doesn't exist. We need to support Firefox < 15 for now
- * because of Facebook's testing infrastructure.
- */
-if (!performance || !performance.now) {
-  performance = Date;
-}
-
-var performanceNow = performance.now.bind(performance);
-
-module.exports = performanceNow;
-
-},{ "./performance":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/performance.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDefaultPerfAnalysis.js":[function(require,module,exports){
+},{ "./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDefaultPerfAnalysis.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -49568,7 +49540,35 @@ var ReactDefaultPerfAnalysis = {
 
 module.exports = ReactDefaultPerfAnalysis;
 
-},{ "./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactEventEmitterMixin.js":[function(require,module,exports){
+},{ "./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/performanceNow.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule performanceNow
+ * @typechecks
+ */
+
+var performance = require("./performance");
+
+/**
+ * Detect if we can use `window.performance.now()` and gracefully fallback to
+ * `Date.now()` if it doesn't exist. We need to support Firefox < 15 for now
+ * because of Facebook's testing infrastructure.
+ */
+if (!performance || !performance.now) {
+  performance = Date;
+}
+
+var performanceNow = performance.now.bind(performance);
+
+module.exports = performanceNow;
+
+},{ "./performance":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/performance.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactEventEmitterMixin.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -49618,142 +49618,7 @@ var ReactEventEmitterMixin = {
 
 module.exports = ReactEventEmitterMixin;
 
-},{ "./EventPluginHub":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPluginHub.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/isTextNode.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule isTextNode
- * @typechecks
- */
-
-var isNode = require("./isNode");
-
-/**
- * @param {*} object The object to check.
- * @return {boolean} Whether or not the object is a DOM text node.
- */
-function isTextNode(object) {
-  return isNode(object) && object.nodeType == 3;
-}
-
-module.exports = isTextNode;
-
-},{ "./isNode":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/isNode.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactOwner.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule ReactOwner
- */
-
-'use strict';
-
-var invariant = require("./invariant");
-
-/**
- * ReactOwners are capable of storing references to owned components.
- *
- * All components are capable of //being// referenced by owner components, but
- * only ReactOwner components are capable of //referencing// owned components.
- * The named reference is known as a "ref".
- *
- * Refs are available when mounted and updated during reconciliation.
- *
- *   var MyComponent = React.createClass({
- *     render: function() {
- *       return (
- *         <div onClick={this.handleClick}>
- *           <CustomComponent ref="custom" />
- *         </div>
- *       );
- *     },
- *     handleClick: function() {
- *       this.refs.custom.handleClick();
- *     },
- *     componentDidMount: function() {
- *       this.refs.custom.initialize();
- *     }
- *   });
- *
- * Refs should rarely be used. When refs are used, they should only be done to
- * control data that is not handled by React's data flow.
- *
- * @class ReactOwner
- */
-var ReactOwner = {
-
-  /**
-   * @param {?object} object
-   * @return {boolean} True if `object` is a valid owner.
-   * @final
-   */
-  isValidOwner: function(object) {
-    return !!(
-      (object &&
-      typeof object.attachRef === 'function' && typeof object.detachRef === 'function')
-    );
-  },
-
-  /**
-   * Adds a component by ref to an owner component.
-   *
-   * @param {ReactComponent} component Component to reference.
-   * @param {string} ref Name by which to refer to the component.
-   * @param {ReactOwner} owner Component on which to record the ref.
-   * @final
-   * @internal
-   */
-  addComponentAsRefTo: function(component, ref, owner) {
-    ("production" !== process.env.NODE_ENV ? invariant(
-      ReactOwner.isValidOwner(owner),
-      'addComponentAsRefTo(...): Only a ReactOwner can have refs. This ' +
-      'usually means that you\'re trying to add a ref to a component that ' +
-      'doesn\'t have an owner (that is, was not created inside of another ' +
-      'component\'s `render` method). Try rendering this component inside of ' +
-      'a new top-level component which will hold the ref.'
-    ) : invariant(ReactOwner.isValidOwner(owner)));
-    owner.attachRef(ref, component);
-  },
-
-  /**
-   * Removes a component by ref from an owner component.
-   *
-   * @param {ReactComponent} component Component to dereference.
-   * @param {string} ref Name of the ref to remove.
-   * @param {ReactOwner} owner Component on which the ref is recorded.
-   * @final
-   * @internal
-   */
-  removeComponentAsRefFrom: function(component, ref, owner) {
-    ("production" !== process.env.NODE_ENV ? invariant(
-      ReactOwner.isValidOwner(owner),
-      'removeComponentAsRefFrom(...): Only a ReactOwner can have refs. This ' +
-      'usually means that you\'re trying to remove a ref to a component that ' +
-      'doesn\'t have an owner (that is, was not created inside of another ' +
-      'component\'s `render` method). Try rendering this component inside of ' +
-      'a new top-level component which will hold the ref.'
-    ) : invariant(ReactOwner.isValidOwner(owner)));
-    // Check that `component` is still the current ref because we do not want to
-    // detach the ref if another component stole it.
-    if (owner.getPublicInstance().refs[ref] === component.getPublicInstance()) {
-      owner.detachRef(ref);
-    }
-  }
-
-};
-
-module.exports = ReactOwner;
-
-},{ "./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactCompositeComponent.js":[function(require,module,exports){
+},{ "./EventPluginHub":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/EventPluginHub.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactCompositeComponent.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -50664,7 +50529,142 @@ var ReactCompositeComponent = {
 
 module.exports = ReactCompositeComponent;
 
-},{ "./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./ReactComponentEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactComponentEnvironment.js","./ReactContext":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactContext.js","./ReactCurrentOwner":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactCurrentOwner.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactElementValidator":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElementValidator.js","./ReactInstanceMap":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInstanceMap.js","./ReactLifeCycle":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactLifeCycle.js","./ReactNativeComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactNativeComponent.js","./ReactPerf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPerf.js","./ReactPropTypeLocationNames":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPropTypeLocationNames.js","./ReactPropTypeLocations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPropTypeLocations.js","./ReactReconciler":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactReconciler.js","./ReactUpdates":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdates.js","./emptyObject":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/emptyObject.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./shouldUpdateReactComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/shouldUpdateReactComponent.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/CSSProperty.js":[function(require,module,exports){
+},{ "./Object.assign":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/Object.assign.js","./ReactComponentEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactComponentEnvironment.js","./ReactContext":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactContext.js","./ReactCurrentOwner":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactCurrentOwner.js","./ReactElement":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElement.js","./ReactElementValidator":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactElementValidator.js","./ReactInstanceMap":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactInstanceMap.js","./ReactLifeCycle":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactLifeCycle.js","./ReactNativeComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactNativeComponent.js","./ReactPerf":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPerf.js","./ReactPropTypeLocationNames":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPropTypeLocationNames.js","./ReactPropTypeLocations":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactPropTypeLocations.js","./ReactReconciler":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactReconciler.js","./ReactUpdates":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactUpdates.js","./emptyObject":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/emptyObject.js","./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js","./shouldUpdateReactComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/shouldUpdateReactComponent.js","./warning":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/warning.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/isTextNode.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule isTextNode
+ * @typechecks
+ */
+
+var isNode = require("./isNode");
+
+/**
+ * @param {*} object The object to check.
+ * @return {boolean} Whether or not the object is a DOM text node.
+ */
+function isTextNode(object) {
+  return isNode(object) && object.nodeType == 3;
+}
+
+module.exports = isTextNode;
+
+},{ "./isNode":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/isNode.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactOwner.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactOwner
+ */
+
+'use strict';
+
+var invariant = require("./invariant");
+
+/**
+ * ReactOwners are capable of storing references to owned components.
+ *
+ * All components are capable of //being// referenced by owner components, but
+ * only ReactOwner components are capable of //referencing// owned components.
+ * The named reference is known as a "ref".
+ *
+ * Refs are available when mounted and updated during reconciliation.
+ *
+ *   var MyComponent = React.createClass({
+ *     render: function() {
+ *       return (
+ *         <div onClick={this.handleClick}>
+ *           <CustomComponent ref="custom" />
+ *         </div>
+ *       );
+ *     },
+ *     handleClick: function() {
+ *       this.refs.custom.handleClick();
+ *     },
+ *     componentDidMount: function() {
+ *       this.refs.custom.initialize();
+ *     }
+ *   });
+ *
+ * Refs should rarely be used. When refs are used, they should only be done to
+ * control data that is not handled by React's data flow.
+ *
+ * @class ReactOwner
+ */
+var ReactOwner = {
+
+  /**
+   * @param {?object} object
+   * @return {boolean} True if `object` is a valid owner.
+   * @final
+   */
+  isValidOwner: function(object) {
+    return !!(
+      (object &&
+      typeof object.attachRef === 'function' && typeof object.detachRef === 'function')
+    );
+  },
+
+  /**
+   * Adds a component by ref to an owner component.
+   *
+   * @param {ReactComponent} component Component to reference.
+   * @param {string} ref Name by which to refer to the component.
+   * @param {ReactOwner} owner Component on which to record the ref.
+   * @final
+   * @internal
+   */
+  addComponentAsRefTo: function(component, ref, owner) {
+    ("production" !== process.env.NODE_ENV ? invariant(
+      ReactOwner.isValidOwner(owner),
+      'addComponentAsRefTo(...): Only a ReactOwner can have refs. This ' +
+      'usually means that you\'re trying to add a ref to a component that ' +
+      'doesn\'t have an owner (that is, was not created inside of another ' +
+      'component\'s `render` method). Try rendering this component inside of ' +
+      'a new top-level component which will hold the ref.'
+    ) : invariant(ReactOwner.isValidOwner(owner)));
+    owner.attachRef(ref, component);
+  },
+
+  /**
+   * Removes a component by ref from an owner component.
+   *
+   * @param {ReactComponent} component Component to dereference.
+   * @param {string} ref Name of the ref to remove.
+   * @param {ReactOwner} owner Component on which the ref is recorded.
+   * @final
+   * @internal
+   */
+  removeComponentAsRefFrom: function(component, ref, owner) {
+    ("production" !== process.env.NODE_ENV ? invariant(
+      ReactOwner.isValidOwner(owner),
+      'removeComponentAsRefFrom(...): Only a ReactOwner can have refs. This ' +
+      'usually means that you\'re trying to remove a ref to a component that ' +
+      'doesn\'t have an owner (that is, was not created inside of another ' +
+      'component\'s `render` method). Try rendering this component inside of ' +
+      'a new top-level component which will hold the ref.'
+    ) : invariant(ReactOwner.isValidOwner(owner)));
+    // Check that `component` is still the current ref because we do not want to
+    // detach the ref if another component stole it.
+    if (owner.getPublicInstance().refs[ref] === component.getPublicInstance()) {
+      owner.detachRef(ref);
+    }
+  }
+
+};
+
+module.exports = ReactOwner;
+
+},{ "./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/CSSProperty.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -50929,7 +50929,49 @@ function focusNode(node) {
 
 module.exports = focusNode;
 
-},{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/dangerousStyleValue.js":[function(require,module,exports){
+},{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/camelizeStyleName.js":[function(require,module,exports){
+/**
+ * Copyright 2014-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule camelizeStyleName
+ * @typechecks
+ */
+
+"use strict";
+
+var camelize = require("./camelize");
+
+var msPattern = /^-ms-/;
+
+/**
+ * Camelcases a hyphenated CSS property name, for example:
+ *
+ *   > camelizeStyleName('background-color')
+ *   < "backgroundColor"
+ *   > camelizeStyleName('-moz-transition')
+ *   < "MozTransition"
+ *   > camelizeStyleName('-ms-transition')
+ *   < "msTransition"
+ *
+ * As Andi Smith suggests
+ * (http://www.andismith.com/blog/2012/02/modernizr-prefixed/), an `-ms` prefix
+ * is converted to lowercase `ms`.
+ *
+ * @param {string} string
+ * @return {string}
+ */
+function camelizeStyleName(string) {
+  return camelize(string.replace(msPattern, 'ms-'));
+}
+
+module.exports = camelizeStyleName;
+
+},{ "./camelize":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/camelize.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/dangerousStyleValue.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -51028,49 +51070,7 @@ function hyphenateStyleName(string) {
 
 module.exports = hyphenateStyleName;
 
-},{ "./hyphenate":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/hyphenate.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/camelizeStyleName.js":[function(require,module,exports){
-/**
- * Copyright 2014-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule camelizeStyleName
- * @typechecks
- */
-
-"use strict";
-
-var camelize = require("./camelize");
-
-var msPattern = /^-ms-/;
-
-/**
- * Camelcases a hyphenated CSS property name, for example:
- *
- *   > camelizeStyleName('background-color')
- *   < "backgroundColor"
- *   > camelizeStyleName('-moz-transition')
- *   < "MozTransition"
- *   > camelizeStyleName('-ms-transition')
- *   < "msTransition"
- *
- * As Andi Smith suggests
- * (http://www.andismith.com/blog/2012/02/modernizr-prefixed/), an `-ms` prefix
- * is converted to lowercase `ms`.
- *
- * @param {string} string
- * @return {string}
- */
-function camelizeStyleName(string) {
-  return camelize(string.replace(msPattern, 'ms-'));
-}
-
-module.exports = camelizeStyleName;
-
-},{ "./camelize":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/camelize.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMultiChildUpdateTypes.js":[function(require,module,exports){
+},{ "./hyphenate":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/hyphenate.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactMultiChildUpdateTypes.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -51103,7 +51103,71 @@ var ReactMultiChildUpdateTypes = keyMirror({
 
 module.exports = ReactMultiChildUpdateTypes;
 
-},{ "./keyMirror":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/keyMirror.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactChildReconciler.js":[function(require,module,exports){
+},{ "./keyMirror":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/keyMirror.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/accumulateInto.js":[function(require,module,exports){
+/**
+ * Copyright 2014-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule accumulateInto
+ */
+
+'use strict';
+
+var invariant = require("./invariant");
+
+/**
+ *
+ * Accumulates items that must not be null or undefined into the first one. This
+ * is used to conserve memory by avoiding array allocations, and thus sacrifices
+ * API cleanness. Since `current` can be null before being passed in and not
+ * null after this function, make sure to assign it back to `current`:
+ *
+ * `a = accumulateInto(a, b);`
+ *
+ * This API should be sparingly used. Try `accumulate` for something cleaner.
+ *
+ * @return {*|array<*>} An accumulation of items.
+ */
+
+function accumulateInto(current, next) {
+  ("production" !== process.env.NODE_ENV ? invariant(
+    next != null,
+    'accumulateInto(...): Accumulated items must not be null or undefined.'
+  ) : invariant(next != null));
+  if (current == null) {
+    return next;
+  }
+
+  // Both are not empty. Warning: Never call x.concat(y) when you are not
+  // certain that x is an Array (x could be a string with concat method).
+  var currentIsArray = Array.isArray(current);
+  var nextIsArray = Array.isArray(next);
+
+  if (currentIsArray && nextIsArray) {
+    current.push.apply(current, next);
+    return current;
+  }
+
+  if (currentIsArray) {
+    current.push(next);
+    return current;
+  }
+
+  if (nextIsArray) {
+    // A bit too dangerous to mutate `next`.
+    return [current].concat(next);
+  }
+
+  return [current, next];
+}
+
+module.exports = accumulateInto;
+
+},{ "./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactChildReconciler.js":[function(require,module,exports){
 /**
  * Copyright 2014-2015, Facebook, Inc.
  * All rights reserved.
@@ -51230,71 +51294,7 @@ var ReactChildReconciler = {
 
 module.exports = ReactChildReconciler;
 
-},{ "./ReactReconciler":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactReconciler.js","./flattenChildren":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/flattenChildren.js","./instantiateReactComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/instantiateReactComponent.js","./shouldUpdateReactComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/shouldUpdateReactComponent.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/accumulateInto.js":[function(require,module,exports){
-/**
- * Copyright 2014-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule accumulateInto
- */
-
-'use strict';
-
-var invariant = require("./invariant");
-
-/**
- *
- * Accumulates items that must not be null or undefined into the first one. This
- * is used to conserve memory by avoiding array allocations, and thus sacrifices
- * API cleanness. Since `current` can be null before being passed in and not
- * null after this function, make sure to assign it back to `current`:
- *
- * `a = accumulateInto(a, b);`
- *
- * This API should be sparingly used. Try `accumulate` for something cleaner.
- *
- * @return {*|array<*>} An accumulation of items.
- */
-
-function accumulateInto(current, next) {
-  ("production" !== process.env.NODE_ENV ? invariant(
-    next != null,
-    'accumulateInto(...): Accumulated items must not be null or undefined.'
-  ) : invariant(next != null));
-  if (current == null) {
-    return next;
-  }
-
-  // Both are not empty. Warning: Never call x.concat(y) when you are not
-  // certain that x is an Array (x could be a string with concat method).
-  var currentIsArray = Array.isArray(current);
-  var nextIsArray = Array.isArray(next);
-
-  if (currentIsArray && nextIsArray) {
-    current.push.apply(current, next);
-    return current;
-  }
-
-  if (currentIsArray) {
-    current.push(next);
-    return current;
-  }
-
-  if (nextIsArray) {
-    // A bit too dangerous to mutate `next`.
-    return [current].concat(next);
-  }
-
-  return [current, next];
-}
-
-module.exports = accumulateInto;
-
-},{ "./invariant":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/invariant.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getTextContentAccessor.js":[function(require,module,exports){
+},{ "./ReactReconciler":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactReconciler.js","./flattenChildren":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/flattenChildren.js","./instantiateReactComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/instantiateReactComponent.js","./shouldUpdateReactComponent":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/shouldUpdateReactComponent.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getTextContentAccessor.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -51558,7 +51558,112 @@ if (ExecutionEnvironment.canUseDOM) {
 
 module.exports = setTextContent;
 
-},{ "./ExecutionEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ExecutionEnvironment.js","./escapeTextContentForBrowser":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/escapeTextContentForBrowser.js","./setInnerHTML":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/setInnerHTML.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMSelection.js":[function(require,module,exports){
+},{ "./ExecutionEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ExecutionEnvironment.js","./escapeTextContentForBrowser":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/escapeTextContentForBrowser.js","./setInnerHTML":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/setInnerHTML.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventKey.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule getEventKey
+ * @typechecks static-only
+ */
+
+'use strict';
+
+var getEventCharCode = require("./getEventCharCode");
+
+/**
+ * Normalization of deprecated HTML5 `key` values
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent#Key_names
+ */
+var normalizeKey = {
+  'Esc': 'Escape',
+  'Spacebar': ' ',
+  'Left': 'ArrowLeft',
+  'Up': 'ArrowUp',
+  'Right': 'ArrowRight',
+  'Down': 'ArrowDown',
+  'Del': 'Delete',
+  'Win': 'OS',
+  'Menu': 'ContextMenu',
+  'Apps': 'ContextMenu',
+  'Scroll': 'ScrollLock',
+  'MozPrintableKey': 'Unidentified'
+};
+
+/**
+ * Translation from legacy `keyCode` to HTML5 `key`
+ * Only special keys supported, all others depend on keyboard layout or browser
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent#Key_names
+ */
+var translateToKey = {
+  8: 'Backspace',
+  9: 'Tab',
+  12: 'Clear',
+  13: 'Enter',
+  16: 'Shift',
+  17: 'Control',
+  18: 'Alt',
+  19: 'Pause',
+  20: 'CapsLock',
+  27: 'Escape',
+  32: ' ',
+  33: 'PageUp',
+  34: 'PageDown',
+  35: 'End',
+  36: 'Home',
+  37: 'ArrowLeft',
+  38: 'ArrowUp',
+  39: 'ArrowRight',
+  40: 'ArrowDown',
+  45: 'Insert',
+  46: 'Delete',
+  112: 'F1', 113: 'F2', 114: 'F3', 115: 'F4', 116: 'F5', 117: 'F6',
+  118: 'F7', 119: 'F8', 120: 'F9', 121: 'F10', 122: 'F11', 123: 'F12',
+  144: 'NumLock',
+  145: 'ScrollLock',
+  224: 'Meta'
+};
+
+/**
+ * @param {object} nativeEvent Native browser event.
+ * @return {string} Normalized `key` property.
+ */
+function getEventKey(nativeEvent) {
+  if (nativeEvent.key) {
+    // Normalize inconsistent values reported by browsers due to
+    // implementations of a working draft specification.
+
+    // FireFox implements `key` but returns `MozPrintableKey` for all
+    // printable characters (normalized to `Unidentified`), ignore it.
+    var key = normalizeKey[nativeEvent.key] || nativeEvent.key;
+    if (key !== 'Unidentified') {
+      return key;
+    }
+  }
+
+  // Browser does not implement `key`, polyfill as much of it as we can.
+  if (nativeEvent.type === 'keypress') {
+    var charCode = getEventCharCode(nativeEvent);
+
+    // The enter-key is technically both printable and non-printable and can
+    // thus be captured by `keypress`, no other non-printable key should.
+    return charCode === 13 ? 'Enter' : String.fromCharCode(charCode);
+  }
+  if (nativeEvent.type === 'keydown' || nativeEvent.type === 'keyup') {
+    // While user keyboard layout determines the actual meaning of each
+    // `keyCode` value, almost all function keys have a universal value.
+    return translateToKey[nativeEvent.keyCode] || 'Unidentified';
+  }
+  return '';
+}
+
+module.exports = getEventKey;
+
+},{ "./getEventCharCode":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventCharCode.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ReactDOMSelection.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -51771,112 +51876,7 @@ var ReactDOMSelection = {
 
 module.exports = ReactDOMSelection;
 
-},{ "./ExecutionEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ExecutionEnvironment.js","./getNodeForCharacterOffset":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getNodeForCharacterOffset.js","./getTextContentAccessor":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getTextContentAccessor.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventKey.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule getEventKey
- * @typechecks static-only
- */
-
-'use strict';
-
-var getEventCharCode = require("./getEventCharCode");
-
-/**
- * Normalization of deprecated HTML5 `key` values
- * @see https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent#Key_names
- */
-var normalizeKey = {
-  'Esc': 'Escape',
-  'Spacebar': ' ',
-  'Left': 'ArrowLeft',
-  'Up': 'ArrowUp',
-  'Right': 'ArrowRight',
-  'Down': 'ArrowDown',
-  'Del': 'Delete',
-  'Win': 'OS',
-  'Menu': 'ContextMenu',
-  'Apps': 'ContextMenu',
-  'Scroll': 'ScrollLock',
-  'MozPrintableKey': 'Unidentified'
-};
-
-/**
- * Translation from legacy `keyCode` to HTML5 `key`
- * Only special keys supported, all others depend on keyboard layout or browser
- * @see https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent#Key_names
- */
-var translateToKey = {
-  8: 'Backspace',
-  9: 'Tab',
-  12: 'Clear',
-  13: 'Enter',
-  16: 'Shift',
-  17: 'Control',
-  18: 'Alt',
-  19: 'Pause',
-  20: 'CapsLock',
-  27: 'Escape',
-  32: ' ',
-  33: 'PageUp',
-  34: 'PageDown',
-  35: 'End',
-  36: 'Home',
-  37: 'ArrowLeft',
-  38: 'ArrowUp',
-  39: 'ArrowRight',
-  40: 'ArrowDown',
-  45: 'Insert',
-  46: 'Delete',
-  112: 'F1', 113: 'F2', 114: 'F3', 115: 'F4', 116: 'F5', 117: 'F6',
-  118: 'F7', 119: 'F8', 120: 'F9', 121: 'F10', 122: 'F11', 123: 'F12',
-  144: 'NumLock',
-  145: 'ScrollLock',
-  224: 'Meta'
-};
-
-/**
- * @param {object} nativeEvent Native browser event.
- * @return {string} Normalized `key` property.
- */
-function getEventKey(nativeEvent) {
-  if (nativeEvent.key) {
-    // Normalize inconsistent values reported by browsers due to
-    // implementations of a working draft specification.
-
-    // FireFox implements `key` but returns `MozPrintableKey` for all
-    // printable characters (normalized to `Unidentified`), ignore it.
-    var key = normalizeKey[nativeEvent.key] || nativeEvent.key;
-    if (key !== 'Unidentified') {
-      return key;
-    }
-  }
-
-  // Browser does not implement `key`, polyfill as much of it as we can.
-  if (nativeEvent.type === 'keypress') {
-    var charCode = getEventCharCode(nativeEvent);
-
-    // The enter-key is technically both printable and non-printable and can
-    // thus be captured by `keypress`, no other non-printable key should.
-    return charCode === 13 ? 'Enter' : String.fromCharCode(charCode);
-  }
-  if (nativeEvent.type === 'keydown' || nativeEvent.type === 'keyup') {
-    // While user keyboard layout determines the actual meaning of each
-    // `keyCode` value, almost all function keys have a universal value.
-    return translateToKey[nativeEvent.keyCode] || 'Unidentified';
-  }
-  return '';
-}
-
-module.exports = getEventKey;
-
-},{ "./getEventCharCode":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getEventCharCode.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/performance.js":[function(require,module,exports){
+},{ "./ExecutionEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ExecutionEnvironment.js","./getNodeForCharacterOffset":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getNodeForCharacterOffset.js","./getTextContentAccessor":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getTextContentAccessor.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/performance.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -51904,7 +51904,39 @@ if (ExecutionEnvironment.canUseDOM) {
 
 module.exports = performance || {};
 
-},{ "./ExecutionEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ExecutionEnvironment.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/hyphenate.js":[function(require,module,exports){
+},{ "./ExecutionEnvironment":"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/ExecutionEnvironment.js" }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/camelize.js":[function(require,module,exports){
+/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule camelize
+ * @typechecks
+ */
+
+var _hyphenPattern = /-(.)/g;
+
+/**
+ * Camelcases a hyphenated string, for example:
+ *
+ *   > camelize('background-color')
+ *   < "backgroundColor"
+ *
+ * @param {string} string
+ * @return {string}
+ */
+function camelize(string) {
+  return string.replace(_hyphenPattern, function(_, character) {
+    return character.toUpperCase();
+  });
+}
+
+module.exports = camelize;
+
+},{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/hyphenate.js":[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -51936,38 +51968,6 @@ function hyphenate(string) {
 }
 
 module.exports = hyphenate;
-
-},{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/camelize.js":[function(require,module,exports){
-/**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @providesModule camelize
- * @typechecks
- */
-
-var _hyphenPattern = /-(.)/g;
-
-/**
- * Camelcases a hyphenated string, for example:
- *
- *   > camelize('background-color')
- *   < "backgroundColor"
- *
- * @param {string} string
- * @return {string}
- */
-function camelize(string) {
-  return string.replace(_hyphenPattern, function(_, character) {
-    return character.toUpperCase();
-  });
-}
-
-module.exports = camelize;
 
 },{  }],"/Users/konole/Development/ruby/subscription_site/react_app/node_modules/react/lib/getNodeForCharacterOffset.js":[function(require,module,exports){
 /**
