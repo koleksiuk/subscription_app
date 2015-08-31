@@ -7,9 +7,10 @@
 # Example:
 #
 
-set :output, "/Users/konole/Development/ruby/subscription_site/logs/whenever.log"
+set :output, "/var/log/subscription_site/whenever.log"
+
 #
-every 1.minute do
+every 1.day, at: '9:00 am' do
   rake 'send_emails'
 end
 #   command "/usr/bin/some_great_command"
