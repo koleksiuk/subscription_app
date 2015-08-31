@@ -7,7 +7,7 @@ export default React.createClass({
 
     var state = {value: '', hasError: false, valid: valid}
 
-    FormStoreActions.fieldChanged(this.props.name, state);
+    this.fieldChanged(state);
 
     return state;
   },
@@ -38,7 +38,7 @@ export default React.createClass({
     this.setState(state);
 
     // this.setState is asynchronous;
-    FormStoreActions.fieldChanged(this.props.name, state);
+    this.fieldChanged(state);
   },
 
   testLength: function(val) {
@@ -54,6 +54,10 @@ export default React.createClass({
     }
 
     return true;
+  },
+
+  fieldChanged: function(state) {
+    FormStoreActions.fieldChanged(this.props.name, state.value);
   },
 
   render: function() {

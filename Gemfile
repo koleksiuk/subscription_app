@@ -7,7 +7,8 @@ gem 'rack-parser'
 
 gem 'lotusrb',       '0.4.1'
 gem 'lotus-model',   '~> 0.4'
-
+gem 'mail'
+gem 'whenever', require: false
 
 gem 'pg'
 

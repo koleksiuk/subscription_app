@@ -59,8 +59,7 @@ RSpec.describe 'Subscription signup', type: :api do
         expect(subject.first_name).to eq('Mike')
         expect(subject.last_name).to eq('Example')
         expect(subject.email).to eq('mike@example.com')
-        expect(subject.created_at).to_not be_nil
-        expect(subject.confirmed_at).to be_nil
+        expect(subject.created_at.to_date).to eq(Date.today)
       end
     end
   end

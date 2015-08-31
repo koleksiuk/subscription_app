@@ -6,6 +6,8 @@ export default class Signup {
   send() {
     var postData = this.data();
 
+    console.log(postData);
+
     return new Promise(function(resolve, reject) {
       $.ajax({
         type: "POST",

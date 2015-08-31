@@ -1,10 +1,12 @@
 require 'rake'
-require 'rake/testtask'
+require 'rubygems'
+require 'bundler/setup'
+require 'lotus/setup'
+require_relative './lib/subscription_site'
 
-Rake::TestTask.new do |t|
-  t.pattern = 'spec/**/*_spec.rb'
-  t.libs    << 'spec'
+desc "Send emails"
+task :send_emails do
+  emails = SubscriptionRepository.find_emails.to_a.map(&:email)
+
+  DailyMailer.new(emails).deliver
 end
-
-task default: :test
-task spec: :test

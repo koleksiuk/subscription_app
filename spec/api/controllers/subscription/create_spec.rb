@@ -29,7 +29,6 @@ RSpec.describe Api::Controllers::Subscription::Create do
       subscription = SubscriptionRepository.find_by_email('email@example.com')
 
       expect(action.subscription).to eq(subscription)
-      expect(action.subscription.confirmed_at).to be_nil
     end
   end
 
@@ -40,7 +39,7 @@ RSpec.describe Api::Controllers::Subscription::Create do
           first_name: 'test',
           last_name: 'last',
           email: 'email@example.com',
-          confirmed_at: DateTime.now,
+          created_at: DateTime.new(2000, 1, 1),
         }
       }
     end
@@ -49,7 +48,7 @@ RSpec.describe Api::Controllers::Subscription::Create do
       action.call(params)
       subscription = action.subscription
 
-      expect(subscription.confirmed_at).to be_nil
+      expect(subscription.created_at.to_date).to eq(Date.today)
     end
   end
 

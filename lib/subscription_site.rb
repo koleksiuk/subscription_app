@@ -1,4 +1,6 @@
 require 'lotus/model'
+require 'mail'
+
 Dir["#{ __dir__ }/subscription_site/**/*.rb"].each { |file| require_relative file }
 
 Lotus::Model.configure do
@@ -35,3 +37,7 @@ Lotus::Model.configure do
   # Alternatively, you can use a block syntax like the following:
   #
 end.load!
+
+Mail.defaults do
+  delivery_method :test
+end

@@ -7,5 +7,4 @@ collection :subscriptions do
   attribute :first_name,   String
   attribute :last_name,    String
   attribute :created_at,   DateTime
-  attribute :confirmed_at, DateTime
 end

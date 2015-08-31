@@ -3,3 +3,5 @@ react_app/dist
 react_app/.tmp
 react_app/.sass-cache
 react_app/bower_components
+
+logs/*
